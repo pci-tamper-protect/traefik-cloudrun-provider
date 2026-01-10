@@ -1,0 +1,211 @@
+package provider
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"time"
+
+	"github.com/kestenbroughton/traefik-cloudrun-provider/internal/gcp"
+	run "google.golang.org/api/run/v1"
+)
+
+// Config represents the provider configuration
+type Config struct {
+	// GCP Configuration
+	ProjectIDs   []string      // List of GCP project IDs to monitor
+	Region       string        // GCP region (e.g., "us-central1")
+	PollInterval time.Duration // How often to poll Cloud Run API
+
+	// Optional: Eventarc configuration (future)
+	EventarcEnabled bool
+	EventarcTopic   string
+
+	// Token cache settings
+	TokenRefreshBefore time.Duration // Refresh tokens this long before expiry
+}
+
+// Provider implements the Traefik provider interface for Cloud Run
+type Provider struct {
+	config       *Config
+	runService   *run.APIService
+	tokenManager *gcp.TokenManager
+	stopChan     chan struct{}
+}
+
+// New creates a new Cloud Run provider
+func New(config *Config) (*Provider, error) {
+	if config == nil {
+		return nil, fmt.Errorf("config cannot be nil")
+	}
+
+	// Validate configuration
+	if len(config.ProjectIDs) == 0 {
+		return nil, fmt.Errorf("at least one project ID must be specified")
+	}
+	if config.Region == "" {
+		return nil, fmt.Errorf("region must be specified")
+	}
+	if config.PollInterval == 0 {
+		config.PollInterval = 30 * time.Second
+	}
+
+	// Initialize Cloud Run client
+	ctx := context.Background()
+	runService, err := run.NewService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Cloud Run service: %w", err)
+	}
+
+	return &Provider{
+		config:       config,
+		runService:   runService,
+		tokenManager: gcp.NewTokenManager(),
+		stopChan:     make(chan struct{}),
+	}, nil
+}
+
+// Start begins polling for Cloud Run services and generating configurations
+func (p *Provider) Start(configChan chan<- *DynamicConfig) error {
+	log.Printf("[CloudRun Provider] Starting with poll interval: %v", p.config.PollInterval)
+
+	// Generate initial configuration
+	if err := p.updateConfig(configChan); err != nil {
+		return fmt.Errorf("failed to generate initial config: %w", err)
+	}
+
+	// Start polling loop
+	go p.pollLoop(configChan)
+
+	return nil
+}
+
+// Stop stops the provider
+func (p *Provider) Stop() error {
+	close(p.stopChan)
+	log.Printf("[CloudRun Provider] Stopped")
+	return nil
+}
+
+// pollLoop polls Cloud Run API at configured intervals
+func (p *Provider) pollLoop(configChan chan<- *DynamicConfig) {
+	ticker := time.NewTicker(p.config.PollInterval)
+	defer ticker.Stop()
+
+	for {
+		select {
+		case <-ticker.C:
+			if err := p.updateConfig(configChan); err != nil {
+				log.Printf("[CloudRun Provider] Error updating config: %v", err)
+			}
+		case <-p.stopChan:
+			return
+		}
+	}
+}
+
+// updateConfig discovers services and generates Traefik configuration
+func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
+	config := NewDynamicConfig()
+
+	// Discover services from all configured projects
+	for _, projectID := range p.config.ProjectIDs {
+		services, err := p.listServices(p.runService, projectID, p.config.Region)
+		if err != nil {
+			log.Printf("[CloudRun Provider] Warning: Failed to list services in %s: %v", projectID, err)
+			continue
+		}
+
+		log.Printf("[CloudRun Provider] Found %d service(s) in %s/%s", len(services), projectID, p.config.Region)
+
+		for _, service := range services {
+			if err := p.processService(service, config); err != nil {
+				log.Printf("[CloudRun Provider] Warning: Failed to process service %s: %v", service.Name, err)
+				continue
+			}
+		}
+	}
+
+	// Add Traefik API/Dashboard routers
+	config.AddTraefikInternalRouters()
+
+	// Send configuration to Traefik
+	configChan <- config
+
+	return nil
+}
+
+// processService processes a single Cloud Run service and adds it to the configuration
+func (p *Provider) processService(service CloudRunService, config *DynamicConfig) error {
+	log.Printf("[CloudRun Provider] Processing: %s (%s)", service.Name, service.ProjectID)
+
+	// Extract router configs from labels
+	routerConfigs := extractRouterConfigs(service.Labels, service.Name)
+	if len(routerConfigs) == 0 {
+		return fmt.Errorf("no router labels found for %s", service.Name)
+	}
+
+	log.Printf("[CloudRun Provider] Found %d router(s) for %s", len(routerConfigs), service.Name)
+
+	// Determine service name from labels
+	serviceNameFromLabel := service.Name
+	for _, router := range routerConfigs {
+		if router.Service != "" {
+			serviceNameFromLabel = router.Service
+			break
+		}
+	}
+
+	// Get identity token for service
+	serviceToken, err := p.tokenManager.GetToken(service.URL)
+	if err != nil {
+		log.Printf("[CloudRun Provider] Warning: Failed to fetch token for %s: %v", service.Name, err)
+		// Continue without token - middleware will have error marker
+	} else {
+		log.Printf("[CloudRun Provider] Fetched token for %s (%d chars)", service.Name, len(serviceToken))
+	}
+
+	// Create auth middleware
+	authMiddlewareName := fmt.Sprintf("%s-auth", serviceNameFromLabel)
+	config.AddAuthMiddleware(authMiddlewareName, serviceToken)
+
+	// Add routers (with auth middleware and retry middleware)
+	for routerName, routerConfig := range routerConfigs {
+		// Add auth middleware if not already present
+		hasAuth := false
+		for _, mw := range routerConfig.Middlewares {
+			if mw == authMiddlewareName || mw == fmt.Sprintf("%s@file", authMiddlewareName) {
+				hasAuth = true
+				break
+			}
+		}
+		if !hasAuth {
+			routerConfig.Middlewares = append(routerConfig.Middlewares, authMiddlewareName)
+		}
+
+		// Always add retry middleware for cold starts
+		hasRetry := false
+		for _, mw := range routerConfig.Middlewares {
+			if mw == "retry-cold-start@file" {
+				hasRetry = true
+				break
+			}
+		}
+		if !hasRetry {
+			routerConfig.Middlewares = append(routerConfig.Middlewares, "retry-cold-start@file")
+		}
+
+		config.AddRouter(routerName, routerConfig)
+	}
+
+	// Add service definition
+	serviceConfig := ServiceConfig{
+		LoadBalancer: LoadBalancerConfig{
+			Servers:        []ServerConfig{{URL: service.URL}},
+			PassHostHeader: false,
+		},
+	}
+	config.AddService(serviceNameFromLabel, serviceConfig)
+
+	return nil
+}

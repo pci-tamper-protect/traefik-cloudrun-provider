@@ -1,0 +1,51 @@
+# Example Traefik static configuration with Cloud Run provider
+#
+# Usage:
+#   traefik --configFile=examples/provider-config.yml
+
+# Entry points
+entryPoints:
+  web:
+    address: ":8080"
+
+# API and Dashboard (for development)
+api:
+  dashboard: true
+  insecure: true  # Only for local development
+
+# Cloud Run Provider
+providers:
+  # File provider for static middlewares (defined in dynamic/routes.yml)
+  file:
+    directory: "/etc/traefik/dynamic"
+    watch: true
+
+  # Cloud Run Provider (this plugin)
+  # Note: This is example configuration - actual implementation will vary
+  # based on how we integrate with Traefik (plugin vs external provider)
+  cloudrun:
+    # Required: GCP configuration
+    projectIDs:
+      - "labs-stg"
+      - "labs-home-stg"
+    region: "us-central1"
+
+    # Optional: Polling configuration
+    pollInterval: "30s"  # How often to check Cloud Run API
+
+    # Optional: Token caching
+    tokenCache:
+      refreshBeforeExpiry: "5m"  # Refresh tokens 5 min before expiry
+
+    # Future: Eventarc support
+    # eventarc:
+    #   enabled: false
+    #   topic: "projects/labs-stg/topics/cloudrun-changes"
+    #   subscription: "traefik-updates"
+
+# Logging
+log:
+  level: DEBUG
+
+# Access logs
+accessLog: {}
