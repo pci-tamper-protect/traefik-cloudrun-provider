@@ -314,8 +314,8 @@ Releases are managed by maintainers. The process:
 
 ## Getting Help
 
-- **Questions:** Open a [GitHub Discussion](https://github.com/kestenbroughton/traefik-cloudrun-provider/discussions)
-- **Bugs:** Open a [GitHub Issue](https://github.com/kestenbroughton/traefik-cloudrun-provider/issues)
+- **Questions:** Open a [GitHub Discussion](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/discussions)
+- **Bugs:** Open a [GitHub Issue](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/issues)
 - **Security:** Email maintainers privately (see SECURITY.md)
 
 ## Resources

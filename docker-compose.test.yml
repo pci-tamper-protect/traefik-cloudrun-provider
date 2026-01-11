@@ -16,8 +16,8 @@ services:
       - LOG_LEVEL=DEBUG
       - LOG_FORMAT=text
       - ENVIRONMENT=stg
-      - LABS_PROJECT_ID=${LABS_PROJECT_ID:-labs-stg}
-      - HOME_PROJECT_ID=${HOME_PROJECT_ID:-labs-home-stg}
+      - LABS_PROJECT_ID=${LABS_PROJECT_ID:-my-project-stg}
+      - HOME_PROJECT_ID=${HOME_PROJECT_ID:-my-home-stg}
       - REGION=${REGION:-us-central1}
     command: ["/output/routes.yml"]
     networks:

@@ -5,7 +5,7 @@
 ### Core Requirements
 - [x] **LICENSE** - MIT License
 - [x] **README.md** - Comprehensive documentation with badges, quickstart, examples
-- [x] **go.mod** - Valid module path: `github.com/kestenbroughton/traefik-cloudrun-provider`
+- [x] **go.mod** - Valid module path: `github.com/pci-tamper-protect/traefik-cloudrun-provider`
 - [x] **Code Quality** - All tests passing (23 tests)
 - [x] **Documentation** - Complete docs (README, DESIGN, TESTING, MIGRATION, CONTRIBUTING)
 
@@ -88,7 +88,7 @@
 
 2. **Push to GitHub**
    ```bash
-   git remote add origin https://github.com/kestenbroughton/traefik-cloudrun-provider.git
+   git remote add origin https://github.com/pci-tamper-protect/traefik-cloudrun-provider.git
    git branch -M main
    git push -u origin main
    ```
@@ -140,20 +140,20 @@
 
 1. **Verify pkg.go.dev indexing**
    - Wait 5-10 minutes
-   - Visit: https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider
+   - Visit: https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider
    - Should show documentation automatically
 
 2. **Test installation**
    ```bash
    # In a clean directory
-   go get github.com/kestenbroughton/traefik-cloudrun-provider@v1.0.0
+   go get github.com/pci-tamper-protect/traefik-cloudrun-provider@v1.0.0
    ```
 
 3. **Add badges to README** (after CI runs successfully)
    ```markdown
-   [![CI](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml)
-   [![Go Report Card](https://goreportcard.com/badge/github.com/kestenbroughton/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/kestenbroughton/traefik-cloudrun-provider)
-   [![Go Reference](https://pkg.go.dev/badge/github.com/kestenbroughton/traefik-cloudrun-provider.svg)](https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider)
+   [![CI](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml)
+   [![Go Report Card](https://goreportcard.com/badge/github.com/pci-tamper-protect/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/pci-tamper-protect/traefik-cloudrun-provider)
+   [![Go Reference](https://pkg.go.dev/badge/github.com/pci-tamper-protect/traefik-cloudrun-provider.svg)](https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider)
    [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
    ```
 
@@ -241,7 +241,7 @@ git add .
 git commit -m "Release v1.0.0: Production-ready Cloud Run provider"
 
 # 2. Create GitHub repo (via web UI), then:
-git remote add origin https://github.com/kestenbroughton/traefik-cloudrun-provider.git
+git remote add origin https://github.com/pci-tamper-protect/traefik-cloudrun-provider.git
 git push -u origin main
 
 # 3. Wait for CI to pass, then create tag:
@@ -251,7 +251,7 @@ git push origin v1.0.0
 # 4. Create release on GitHub (via web UI)
 
 # 5. Wait 10 minutes, verify:
-# https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider
+# https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider
 ```
 
 ---

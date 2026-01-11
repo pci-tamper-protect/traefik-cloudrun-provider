@@ -56,27 +56,21 @@ labels:
   traefik_http_services_frontend_lb_port: "8080"
 
 # ============================================
-# Example 3: Lab Service with Custom Rule ID
+# Example 3: Backend API Service
 # ============================================
-# Using rule ID for path-based routing (e-skimming-labs pattern)
+# Backend service with path-based routing
 
 labels:
   traefik_enable: "true"
 
-  # Main lab route (uses rule ID mapping)
-  traefik_http_routers_lab1_rule_id: "lab1"  # Maps to PathPrefix(`/lab1`)
-  traefik_http_routers_lab1_priority: "300"
-  traefik_http_routers_lab1_entrypoints: "websecure"
-  traefik_http_routers_lab1_service: "lab1-service"
-
-  # Lab static files
-  traefik_http_routers_lab1_static_rule_id: "lab1-static"  # Maps to Path(`/lab1/static/{path:.*}`)
-  traefik_http_routers_lab1_static_priority: "400"
-  traefik_http_routers_lab1_static_entrypoints: "websecure"
-  traefik_http_routers_lab1_static_service: "lab1-service"
+  # API endpoint
+  traefik_http_routers_backend_rule: "Host(`api.example.com`) && PathPrefix(`/v1`)"
+  traefik_http_routers_backend_priority: "300"
+  traefik_http_routers_backend_entrypoints: "websecure"
+  traefik_http_routers_backend_service: "backend-api"
 
   # Service configuration
-  traefik_http_services_lab1_service_lb_port: "3000"
+  traefik_http_services_backend_api_lb_port: "8080"
 
 # ============================================
 # Example 4: Backend API with Middleware
@@ -116,21 +110,21 @@ labels:
   traefik_http_services_dashboard_svc_lb_port: "3000"
 
 # ============================================
-# Example 6: C2 Server (Private Service)
+# Example 6: Admin Service (Private)
 # ============================================
 # Backend service only accessible internally
 
 labels:
   traefik_enable: "true"
 
-  # C2 route (internal only)
-  traefik_http_routers_c2_rule_id: "lab1-c2"  # Maps to PathPrefix(`/lab1/c2`)
-  traefik_http_routers_c2_priority: "500"
-  traefik_http_routers_c2_entrypoints: "websecure"
-  traefik_http_routers_c2_service: "c2-server"
+  # Admin route
+  traefik_http_routers_admin_rule: "Host(`admin.example.com`) && PathPrefix(`/admin`)"
+  traefik_http_routers_admin_priority: "500"
+  traefik_http_routers_admin_entrypoints: "websecure"
+  traefik_http_routers_admin_service: "admin-service"
 
   # Service configuration
-  traefik_http_services_c2_server_lb_port: "4000"
+  traefik_http_services_admin_service_lb_port: "4000"
 
 # ============================================
 # Label Format Notes
@@ -144,12 +138,6 @@ labels:
 # Label Mapping:
 # - underscores in labels -> dots in Traefik config
 # - Example: traefik_http_routers_myapp_rule -> traefik.http.routers.myapp.rule
-#
-# Rule IDs (Custom Mapping):
-# - lab1          -> PathPrefix(`/lab1`)
-# - lab1-static   -> Path(`/lab1/static/{path:.*}`)
-# - lab1-c2       -> PathPrefix(`/lab1/c2`)
-# - home          -> PathPrefix(`/`)
 #
 # Priority Rules:
 # - Higher number = higher priority

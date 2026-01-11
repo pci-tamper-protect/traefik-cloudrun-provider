@@ -26,8 +26,8 @@ providers:
   cloudrun:
     # Required: GCP configuration
     projectIDs:
-      - "labs-stg"
-      - "labs-home-stg"
+      - "my-project-prod"
+      - "my-home-prod"
     region: "us-central1"
 
     # Optional: Polling configuration
@@ -40,7 +40,7 @@ providers:
     # Future: Eventarc support
     # eventarc:
     #   enabled: false
-    #   topic: "projects/labs-stg/topics/cloudrun-changes"
+    #   topic: "projects/my-project-prod/topics/cloudrun-changes"
     #   subscription: "traefik-updates"
 
 # Logging

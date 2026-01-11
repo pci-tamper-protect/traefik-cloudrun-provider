@@ -6,8 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/kestenbroughton/traefik-cloudrun-provider/internal/gcp"
-	"github.com/kestenbroughton/traefik-cloudrun-provider/internal/logging"
+	"github.com/pci-tamper-protect/traefik-cloudrun-provider/internal/gcp"
+	"github.com/pci-tamper-protect/traefik-cloudrun-provider/internal/logging"
 	run "google.golang.org/api/run/v1"
 )
 

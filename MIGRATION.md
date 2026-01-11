@@ -88,7 +88,7 @@ cd deploy
 
 Check logs:
 ```bash
-gcloud run services logs read traefik-stg --region=us-central1
+gcloud run services logs read traefik-example --region=us-central1
 ```
 
 ### Phase 2: Cut Over to Provider
@@ -109,8 +109,8 @@ providers:
 providers:
   cloudrun:
     projectIDs:
-      - labs-stg
-      - labs-home-stg
+      - my-project-stg
+      - my-home-stg
     region: us-central1
     pollInterval: 30s
 ```
@@ -217,7 +217,7 @@ deploy/traefik/
 ./refresh-routes.sh
 
 # Or container restart
-gcloud run services update traefik-stg --image=...
+gcloud run services update traefik-example --image=...
 ```
 
 **After:**
@@ -233,17 +233,17 @@ gcloud run services update my-service \
 **Before:**
 ```bash
 # SSH into container to debug
-gcloud run services exec traefik-stg -- /bin/sh
+gcloud run services exec traefik-example -- /bin/sh
 cat /etc/traefik/dynamic/routes.yml
 ```
 
 **After:**
 ```bash
 # View provider logs
-gcloud run services logs read traefik-stg --region=us-central1 | grep "CloudRun Provider"
+gcloud run services logs read traefik-example --region=us-central1 | grep "CloudRun Provider"
 
 # Check Traefik API for current routes
-curl https://stg.labs.pcioasis.com/api/http/routers
+curl https://stg.example.com/api/http/routers
 ```
 
 ## Troubleshooting
@@ -301,7 +301,7 @@ git checkout HEAD~1 deploy/traefik/entrypoint.sh
 
 3. **Verify**
 ```bash
-gcloud run services describe traefik-stg --region=us-central1
+gcloud run services describe traefik-example --region=us-central1
 ```
 
 ## Future Enhancements

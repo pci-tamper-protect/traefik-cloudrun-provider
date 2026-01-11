@@ -1,0 +1,226 @@
+# Cloud Run Service Label Configuration - e-skimming-labs Real-World Examples
+# These are actual label configurations from the e-skimming-labs project
+# https://github.com/kestenbroughton/e-skimming-labs
+
+# ============================================
+# e-skimming-labs Architecture
+# ============================================
+# Projects:
+#   - labs-stg / labs-prod: Lab services and demos
+#   - labs-home-stg / labs-home-prod: Landing page and index
+# Domain: stg.labs.pcioasis.com
+# Custom Rule IDs: lab1, lab1-static, lab1-c2, home
+
+# ============================================
+# Example 1: Home Index Service
+# ============================================
+# Landing page service in labs-home-{env} project
+
+labels:
+  traefik_enable: "true"
+
+  # Home page route
+  traefik_http_routers_home_rule_id: "home"  # Maps to PathPrefix(`/`)
+  traefik_http_routers_home_priority: "100"
+  traefik_http_routers_home_entrypoints: "websecure"
+  traefik_http_routers_home_service: "home-index"
+
+  # Service configuration
+  traefik_http_services_home_index_lb_port: "8080"
+
+# Deployment:
+# gcloud run services update home-index-service \
+#   --project=labs-home-stg \
+#   --region=us-central1 \
+#   --update-labels="traefik_enable=true,..."
+
+# ============================================
+# Example 2: Lab 1 Service (DOM Skimming)
+# ============================================
+# Interactive lab for demonstrating DOM skimming attacks
+
+labels:
+  traefik_enable: "true"
+
+  # Main lab interface
+  traefik_http_routers_lab1_rule_id: "lab1"  # Maps to PathPrefix(`/lab1`)
+  traefik_http_routers_lab1_priority: "300"
+  traefik_http_routers_lab1_entrypoints: "websecure"
+  traefik_http_routers_lab1_service: "lab1-service"
+
+  # Lab static files (CSS, JS, images)
+  traefik_http_routers_lab1_static_rule_id: "lab1-static"  # Maps to Path(`/lab1/static/{path:.*}`)
+  traefik_http_routers_lab1_static_priority: "400"
+  traefik_http_routers_lab1_static_entrypoints: "websecure"
+  traefik_http_routers_lab1_static_service: "lab1-service"
+
+  # Service configuration
+  traefik_http_services_lab1_service_lb_port: "3000"
+
+# Deployment:
+# gcloud run services update lab1-service \
+#   --project=labs-stg \
+#   --region=us-central1 \
+#   --update-labels="traefik_enable=true,..."
+
+# ============================================
+# Example 3: Lab 1 C2 Server
+# ============================================
+# Command & Control server for lab demonstrations (internal only)
+
+labels:
+  traefik_enable: "true"
+
+  # C2 server endpoint
+  traefik_http_routers_lab1_c2_rule_id: "lab1-c2"  # Maps to PathPrefix(`/lab1/c2`)
+  traefik_http_routers_lab1_c2_priority: "500"
+  traefik_http_routers_lab1_c2_entrypoints: "websecure"
+  traefik_http_routers_lab1_c2_service: "lab1-c2"
+
+  # Service configuration
+  traefik_http_services_lab1_c2_lb_port: "4000"
+
+# Deployment:
+# gcloud run services update lab1-c2-server \
+#   --project=labs-stg \
+#   --region=us-central1 \
+#   --update-labels="traefik_enable=true,..."
+
+# ============================================
+# Example 4: Lab 2 Service (Extension Hijacking)
+# ============================================
+# Lab demonstrating browser extension security vulnerabilities
+
+labels:
+  traefik_enable: "true"
+
+  # Main lab interface
+  traefik_http_routers_lab2_rule_id: "lab2"  # Maps to PathPrefix(`/lab2`)
+  traefik_http_routers_lab2_priority: "300"
+  traefik_http_routers_lab2_entrypoints: "websecure"
+  traefik_http_routers_lab2_service: "lab2-service"
+
+  # Lab static files
+  traefik_http_routers_lab2_static_rule_id: "lab2-static"
+  traefik_http_routers_lab2_static_priority: "400"
+  traefik_http_routers_lab2_static_entrypoints: "websecure"
+  traefik_http_routers_lab2_static_service: "lab2-service"
+
+  # Service configuration
+  traefik_http_services_lab2_service_lb_port: "3000"
+
+# ============================================
+# Example 5: SEO Service
+# ============================================
+# SEO metadata service for lab pages
+
+labels:
+  traefik_enable: "true"
+
+  # SEO API endpoint
+  traefik_http_routers_seo_rule: "PathPrefix(`/api/seo`)"
+  traefik_http_routers_seo_priority: "200"
+  traefik_http_routers_seo_entrypoints: "websecure"
+  traefik_http_routers_seo_service: "seo-service"
+
+  # Service configuration
+  traefik_http_services_seo_service_lb_port: "8080"
+
+# Deployment:
+# gcloud run services update seo-service \
+#   --project=labs-home-stg \
+#   --region=us-central1 \
+#   --update-labels="traefik_enable=true,..."
+
+# ============================================
+# Custom Rule ID Mappings (e-skimming-labs)
+# ============================================
+# These rule IDs are mapped in provider/labels.go:
+#
+# Rule ID        → Traefik Rule
+# ----------------------------------------------------
+# home           → PathPrefix(`/`)
+# lab1           → PathPrefix(`/lab1`)
+# lab1-static    → Path(`/lab1/static/{path:.*}`)
+# lab1-c2        → PathPrefix(`/lab1/c2`)
+# lab2           → PathPrefix(`/lab2`)
+# lab2-static    → Path(`/lab2/static/{path:.*}`)
+#
+# These are project-specific mappings and can be customized
+# for your own project by modifying provider/labels.go
+
+# ============================================
+# Multi-Project Setup
+# ============================================
+# Environment variables for e-skimming-labs:
+#
+# export ENVIRONMENT=stg
+# export LABS_PROJECT_ID=labs-stg            # Main labs project
+# export HOME_PROJECT_ID=labs-home-stg       # Landing page project
+# export REGION=us-central1
+#
+# The provider discovers services in both projects:
+# - labs-stg: lab1-service, lab1-c2-server, lab2-service, etc.
+# - labs-home-stg: home-index-service, seo-service
+
+# ============================================
+# Service-to-Service Authentication
+# ============================================
+# All Cloud Run services are private (not publicly accessible).
+# Traefik automatically injects GCP identity tokens for authentication:
+#
+# 1. Client → Traefik (public endpoint)
+# 2. Traefik → Fetch identity token from metadata server
+# 3. Traefik → Cloud Run Service (with Authorization: Bearer {token})
+#
+# This ensures:
+# - Services remain private
+# - No manual token management
+# - Automatic token refresh (55-min TTL)
+
+# ============================================
+# Complete Deployment Example
+# ============================================
+# Deploy Traefik provider to discover and route to all services:
+#
+# # 1. Set environment
+# export ENVIRONMENT=stg
+# export LABS_PROJECT_ID=labs-stg
+# export HOME_PROJECT_ID=labs-home-stg
+# export REGION=us-central1
+#
+# # 2. Run provider (generates routes.yml)
+# ./bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes.yml
+#
+# # 3. Deploy Traefik with generated routes
+# gcloud run deploy traefik-stg \
+#   --source . \
+#   --region=us-central1 \
+#   --set-env-vars="ENVIRONMENT=stg,LABS_PROJECT_ID=labs-stg,..."
+#
+# # 4. Set up Cloud Scheduler to refresh routes every 30s
+# gcloud scheduler jobs create http refresh-routes \
+#   --schedule="*/30 * * * * *" \
+#   --uri="https://traefik-stg-xyz.run.app/refresh" \
+#   --oidc-service-account-email=scheduler@PROJECT_ID.iam.gserviceaccount.com
+
+# ============================================
+# Accessing the Labs
+# ============================================
+# Once deployed:
+#
+# Home page:  https://stg.labs.pcioasis.com/
+# Lab 1:      https://stg.labs.pcioasis.com/lab1
+# Lab 2:      https://stg.labs.pcioasis.com/lab2
+# C2 Server:  https://stg.labs.pcioasis.com/lab1/c2 (internal only)
+#
+# All routing is handled by Traefik based on the labels above.
+# Services are discovered automatically - no manual route configuration needed.
+
+# ============================================
+# Learn More
+# ============================================
+# - e-skimming-labs repo: https://github.com/kestenbroughton/e-skimming-labs
+# - Provider repo: https://github.com/kbroughton/traefik-cloudrun-provider
+# - Design docs: ../DESIGN.md
+# - Migration guide: ../MIGRATION.md

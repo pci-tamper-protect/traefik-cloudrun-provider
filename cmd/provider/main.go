@@ -6,7 +6,8 @@ import (
 	"os"
 	"time"
 
-	"github.com/kestenbroughton/traefik-cloudrun-provider/provider"
+	"github.com/joho/godotenv"
+	"github.com/pci-tamper-protect/traefik-cloudrun-provider/provider"
 	"gopkg.in/yaml.v3"
 )
 
@@ -19,6 +20,15 @@ const (
 func main() {
 	log.SetFlags(log.LstdFlags | log.Lshortfile)
 	fmt.Fprintf(os.Stderr, "🚀 Starting traefik-cloudrun-provider at %s\n", time.Now().UTC().Format(time.RFC3339))
+
+	// Load .env file if it exists (optional, silently ignore if not found)
+	if err := godotenv.Load(); err != nil {
+		// Ignore file not found errors - .env is optional
+		// Environment variables can be set directly in Cloud Run
+		if !os.IsNotExist(err) {
+			log.Printf("Warning: Error loading .env file: %v", err)
+		}
+	}
 
 	// Load configuration from environment
 	config := loadConfig()
@@ -92,19 +102,18 @@ func loadConfig() *AppConfig {
 
 	var projectIDs []string
 
-	// Labs project
-	labsProject := os.Getenv("LABS_PROJECT_ID")
-	if labsProject == "" {
-		labsProject = fmt.Sprintf("labs-%s", env)
+	// Primary project (required)
+	primaryProject := os.Getenv("LABS_PROJECT_ID")
+	if primaryProject == "" {
+		log.Fatalf("LABS_PROJECT_ID environment variable is required")
 	}
-	projectIDs = append(projectIDs, labsProject)
+	projectIDs = append(projectIDs, primaryProject)
 
-	// Home project
-	homeProject := os.Getenv("HOME_PROJECT_ID")
-	if homeProject == "" {
-		homeProject = fmt.Sprintf("labs-home-%s", env)
+	// Secondary project (optional)
+	secondaryProject := os.Getenv("HOME_PROJECT_ID")
+	if secondaryProject != "" {
+		projectIDs = append(projectIDs, secondaryProject)
 	}
-	projectIDs = append(projectIDs, homeProject)
 
 	region := os.Getenv("REGION")
 	if region == "" {

@@ -88,8 +88,8 @@ docker-test:
 		-e CLOUDRUN_PROVIDER_DEV_MODE=true \
 		-e LOG_LEVEL=DEBUG \
 		-e ENVIRONMENT=stg \
-		-e LABS_PROJECT_ID=labs-stg \
-		-e HOME_PROJECT_ID=labs-home-stg \
+		-e LABS_PROJECT_ID=my-project-stg \
+		-e HOME_PROJECT_ID=my-home-stg \
 		-e REGION=us-central1 \
 		$(BINARY_NAME):test \
 		/tmp/routes.yml

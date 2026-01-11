@@ -4,16 +4,16 @@
 
 Create a Traefik provider that discovers Google Cloud Run services and generates dynamic routing configuration based on labels, with integrated GCP service-to-service authentication via identity tokens.
 
-It is critical that we can run traefik and test containers in a local docker-compose for local testing.  There should also be a way to simulare the traefik container running in cloud-run as well as landing page and lab services.  The first client repo for this traefik provider is ~/projectos/e-skimming-labs/deploy/traefik.  You can read the design docs at ~/projectos/e-skimming-labs/docs/TRAEFIK-ARCHITECTURE.md and TRAEFIK-IMPLEMENTATION-SUMMARY.md.
+It is critical that we can run traefik and test containers in a local docker-compose for local testing.  There should also be a way to simulare the traefik container running in cloud-run as well as landing page and lab services.  The first client repo for this traefik provider is $GIT_REPOS_PATH/e-skimming-labs/deploy/traefik.  You can read the design docs at $GIT_REPOS_PATH/e-skimming-labs/docs/TRAEFIK-ARCHITECTURE.md and TRAEFIK-IMPLEMENTATION-SUMMARY.md.
 
 One major challenge is that cloudrun only exposes one port - 8080, whereas the traefik container has an api and dashboard (at 8081 for us).  This means that until we find a proper deployment model for traefik to expose via path the api/dashboard or run it as a separate container, we have to design around the limitation of not being able to access the traefik api.  This means we often have to read gcloud logs to debug in stg deploys. Hence we need to be able to thoroughly test everything in a local docker-compose environment that mimicks the stg env.  docker-compose.yml, docker-compose.stg-sim.yml should use Dockerfiles that are as similar as possible to the cloud-run Dockerfile.
 Alternatively, if there is a clean path to exposing traefik API, we could develop that first and then leverate the Traefik API more.
 
-We will be using the plugin(s) to refactor ~/projectos/e-skimming-labs.
+We will be using the plugin(s) to refactor $GIT_REPOS_PATH/e-skimming-labs.
 
 ## Problem Statement
 
-Current approach in ~/projectos/e-skimming-labs/deploy/traefik  uses complex bash scripts (entrypoint.sh, generate-routes-from-labels.sh) that:
+Current approach in $GIT_REPOS_PATH/e-skimming-labs/deploy/traefik  uses complex bash scripts (entrypoint.sh, generate-routes-from-labels.sh) that:
 1. Run only at startup - no dynamic updates
 2. Mix concerns - service discovery, token management, config generation
 3. Difficult to test and maintain

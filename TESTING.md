@@ -25,16 +25,16 @@ export CLOUDRUN_PROVIDER_DEV_MODE=true
 
 **Text format** (human-readable):
 ```
-2026-01-10T12:00:00Z [INFO] CloudRunProvider: Initializing Cloud Run provider projects=[labs-stg,labs-home-stg] region=us-central1 pollInterval=30s
+2026-01-10T12:00:00Z [INFO] CloudRunProvider: Initializing Cloud Run provider projects=[my-project-stg,my-home-stg] region=us-central1 pollInterval=30s
 2026-01-10T12:00:01Z [DEBUG] CloudRunProvider: Cloud Run API client initialized
 2026-01-10T12:00:01Z [WARN] CloudRunProvider: Running in development mode - will use ADC for tokens if metadata server unavailable
-2026-01-10T12:00:02Z [INFO] CloudRunProvider: Discovered services project=labs-stg count=5
+2026-01-10T12:00:02Z [INFO] CloudRunProvider: Discovered services project=my-project-stg count=5
 2026-01-10T12:00:03Z [INFO] CloudRunProvider: Configuration generation complete totalServices=8 routers=15 services=8 middlewares=8 duration=1.2s
 ```
 
 **JSON format** (machine-readable, for Cloud Logging):
 ```json
-{"timestamp":"2026-01-10T12:00:00Z","level":"INFO","component":"CloudRunProvider","message":"Initializing Cloud Run provider","projects":"[labs-stg labs-home-stg]","region":"us-central1","pollInterval":"30s"}
+{"timestamp":"2026-01-10T12:00:00Z","level":"INFO","component":"CloudRunProvider","message":"Initializing Cloud Run provider","projects":"[my-project-stg my-home-stg]","region":"us-central1","pollInterval":"30s"}
 {"timestamp":"2026-01-10T12:00:01Z","level":"DEBUG","component":"CloudRunProvider","message":"Cloud Run API client initialized"}
 {"timestamp":"2026-01-10T12:00:01Z","level":"WARN","component":"CloudRunProvider","message":"Running in development mode - will use ADC for tokens if metadata server unavailable"}
 ```
@@ -48,21 +48,37 @@ export CLOUDRUN_PROVIDER_DEV_MODE=true
 gcloud auth application-default login
 ```
 
-2. **Environment Setup**:
+2. **Environment Setup** (choose one method):
+
+**Method 1: Using .env file (recommended)**:
+```bash
+# Copy sample configuration
+cp .env.sample .env
+
+# Edit .env with your values
+cat > .env << 'EOF'
+CLOUDRUN_PROVIDER_DEV_MODE=true
+LOG_LEVEL=DEBUG
+ENVIRONMENT=stg
+LABS_PROJECT_ID=my-project-stg
+HOME_PROJECT_ID=my-home-stg
+REGION=us-central1
+EOF
+```
+
+**Method 2: Export environment variables**:
 ```bash
 export CLOUDRUN_PROVIDER_DEV_MODE=true
 export LOG_LEVEL=DEBUG
 export ENVIRONMENT=stg
-export LABS_PROJECT_ID=labs-stg
-export HOME_PROJECT_ID=labs-home-stg
+export LABS_PROJECT_ID=my-project-stg
+export HOME_PROJECT_ID=my-home-stg
 export REGION=us-central1
 ```
 
 ### Run Provider Locally
 
 ```bash
-cd /Users/kestenbroughton/projectos/traefik-cloudrun-provider
-
 # Build
 go build -o bin/traefik-cloudrun-provider ./cmd/provider
 
@@ -104,9 +120,9 @@ go test -v ./internal/logging/
 **Run all tests:**
 ```bash
 go test ./...
-# ok  	github.com/kestenbroughton/traefik-cloudrun-provider/internal/gcp	0.841s
-# ok  	github.com/kestenbroughton/traefik-cloudrun-provider/internal/logging	0.401s
-# ok  	github.com/kestenbroughton/traefik-cloudrun-provider/provider	1.214s
+# ok  	github.com/pci-tamper-protect/traefik-cloudrun-provider/internal/gcp	0.841s
+# ok  	github.com/pci-tamper-protect/traefik-cloudrun-provider/internal/logging	0.401s
+# ok  	github.com/pci-tamper-protect/traefik-cloudrun-provider/provider	1.214s
 ```
 
 ## Docker Integration Tests
@@ -142,8 +158,8 @@ docker run -it \
   -e CLOUDRUN_PROVIDER_DEV_MODE=true \
   -e LOG_LEVEL=DEBUG \
   -e ENVIRONMENT=stg \
-  -e LABS_PROJECT_ID=labs-stg \
-  -e HOME_PROJECT_ID=labs-home-stg \
+  -e LABS_PROJECT_ID=my-project-stg \
+  -e HOME_PROJECT_ID=my-home-stg \
   -e REGION=us-central1 \
   traefik-cloudrun-provider:test \
   /tmp/routes.yml
@@ -153,7 +169,7 @@ docker run -it \
 ```
 INFO CloudRunProvider: Initializing Cloud Run provider
 WARN CloudRunProvider: Running in development mode - will use ADC for tokens
-INFO CloudRunProvider: Discovered services project=labs-stg count=5
+INFO CloudRunProvider: Discovered services project=my-project-stg count=5
 INFO CloudRunProvider: Configuration generation complete
 ```
 
@@ -164,11 +180,11 @@ Test without ADC (simulating Cloud Run environment):
 ```bash
 # This should fail gracefully with clear error message
 docker run -it \
-  -e K_SERVICE=traefik-stg \
+  -e K_SERVICE=traefik-example \
   -e LOG_LEVEL=DEBUG \
   -e ENVIRONMENT=stg \
-  -e LABS_PROJECT_ID=labs-stg \
-  -e HOME_PROJECT_ID=labs-home-stg \
+  -e LABS_PROJECT_ID=my-project-stg \
+  -e HOME_PROJECT_ID=my-home-stg \
   -e REGION=us-central1 \
   traefik-cloudrun-provider:test \
   /tmp/routes.yml
@@ -338,12 +354,12 @@ package integration
 import (
 	"testing"
 	"time"
-	"github.com/kestenbroughton/traefik-cloudrun-provider/provider"
+	"github.com/pci-tamper-protect/traefik-cloudrun-provider/provider"
 )
 
 func TestProviderPolling(t *testing.T) {
 	config := &provider.Config{
-		ProjectIDs:   []string{"labs-stg"},
+		ProjectIDs:   []string{"my-project-stg"},
 		Region:       "us-central1",
 		PollInterval: 5 * time.Second,
 	}

@@ -18,8 +18,8 @@ services:
     environment:
       # Provider configuration
       - ENVIRONMENT=prod
-      - LABS_PROJECT_ID=labs-prod
-      - HOME_PROJECT_ID=labs-home-prod
+      - LABS_PROJECT_ID=my-project-prod
+      - HOME_PROJECT_ID=my-home-prod
       - REGION=us-central1
       - LOG_LEVEL=INFO
       - LOG_FORMAT=json
@@ -66,8 +66,8 @@ services:
 
     environment:
       - ENVIRONMENT=prod
-      - LABS_PROJECT_ID=labs-prod
-      - HOME_PROJECT_ID=labs-home-prod
+      - LABS_PROJECT_ID=my-project-prod
+      - HOME_PROJECT_ID=my-home-prod
       - REGION=us-central1
       - LOG_LEVEL=INFO
       - REFRESH_INTERVAL=30s

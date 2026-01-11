@@ -33,5 +33,14 @@ Thumbs.db
 *-key.json
 credentials/
 
+# Environment files (never commit!)
+.env
+.env.local
+.env.*.local
+
+# Note: .env.vault and .env.me CAN be committed when using dotenvx encryption
+# They contain encrypted secrets and are safe to share in version control
+# See: https://dotenvx.com for encrypted secret management
+
 # Build artifacts
 dist/

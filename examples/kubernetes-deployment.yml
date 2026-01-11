@@ -233,8 +233,8 @@ metadata:
   namespace: traefik-system
 data:
   environment: "prod"
-  labs_project_id: "labs-prod"
-  home_project_id: "labs-home-prod"
+  labs_project_id: "my-project-prod"
+  home_project_id: "my-home-prod"
   region: "us-central1"
 
 ---

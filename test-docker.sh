@@ -37,8 +37,8 @@ docker run --rm \
   -e CLOUDRUN_PROVIDER_DEV_MODE=true \
   -e LOG_LEVEL=DEBUG \
   -e ENVIRONMENT=stg \
-  -e LABS_PROJECT_ID=${LABS_PROJECT_ID:-labs-stg} \
-  -e HOME_PROJECT_ID=${HOME_PROJECT_ID:-labs-home-stg} \
+  -e LABS_PROJECT_ID=${LABS_PROJECT_ID:-my-project-stg} \
+  -e HOME_PROJECT_ID=${HOME_PROJECT_ID:-my-home-stg} \
   -e REGION=${REGION:-us-central1} \
   traefik-cloudrun-provider:test \
   /output/routes.yml
@@ -60,8 +60,8 @@ if docker run --rm \
   -e K_SERVICE=test-service \
   -e LOG_LEVEL=DEBUG \
   -e ENVIRONMENT=stg \
-  -e LABS_PROJECT_ID=${LABS_PROJECT_ID:-labs-stg} \
-  -e HOME_PROJECT_ID=${HOME_PROJECT_ID:-labs-home-stg} \
+  -e LABS_PROJECT_ID=${LABS_PROJECT_ID:-my-project-stg} \
+  -e HOME_PROJECT_ID=${HOME_PROJECT_ID:-my-home-stg} \
   -e REGION=${REGION:-us-central1} \
   traefik-cloudrun-provider:test \
   /output/routes-no-adc.yml 2>&1 | grep -q "metadata server not available"; then

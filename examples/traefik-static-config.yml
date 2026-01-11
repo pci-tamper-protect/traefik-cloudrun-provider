@@ -27,8 +27,8 @@ providers:
 #   cloudrun:
 #     # Required: GCP projects to discover services from
 #     projectIDs:
-#       - labs-prod
-#       - labs-home-prod
+#       - my-project-prod
+#       - my-home-prod
 #
 #     # Required: GCP region for Cloud Run services
 #     region: us-central1

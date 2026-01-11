@@ -25,7 +25,7 @@ This document tracks readiness for publishing traefik-cloudrun-provider to vario
 **Action Required:**
 ```bash
 # Create GitHub repository first, then:
-git remote add origin https://github.com/kestenbroughton/traefik-cloudrun-provider.git
+git remote add origin https://github.com/pci-tamper-protect/traefik-cloudrun-provider.git
 git add .
 git commit -m "Initial release: v1.0.0"
 git push -u origin main
@@ -52,7 +52,7 @@ git push -u origin main
 **How it works:**
 - Automatically indexed when you push a version tag to GitHub
 - No manual submission needed
-- Available at: https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider
+- Available at: https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider
 
 **Action Required:**
 ```bash
@@ -249,7 +249,7 @@ git commit -m "Add quality tools, CI/CD, and comprehensive documentation
 
 ### Step 3: Push to GitHub
 ```bash
-git remote add origin https://github.com/kestenbroughton/traefik-cloudrun-provider.git
+git remote add origin https://github.com/pci-tamper-protect/traefik-cloudrun-provider.git
 git branch -M main
 git push -u origin main
 ```
@@ -285,10 +285,10 @@ git push origin v1.0.0
 **Go Package Registry:**
 ```bash
 # Wait 5-10 minutes after pushing tag, then check:
-# https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider
+# https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider
 
 # Verify it's importable:
-go get github.com/kestenbroughton/traefik-cloudrun-provider@v1.0.0
+go get github.com/pci-tamper-protect/traefik-cloudrun-provider@v1.0.0
 ```
 
 **GitHub Repository:**
@@ -305,9 +305,9 @@ go get github.com/kestenbroughton/traefik-cloudrun-provider@v1.0.0
 After CI runs successfully, add badges:
 
 ```markdown
-[![CI](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kestenbroughton/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/kestenbroughton/traefik-cloudrun-provider)
-[![Go Reference](https://pkg.go.dev/badge/github.com/kestenbroughton/traefik-cloudrun-provider.svg)](https://pkg.go.dev/github.com/kestenbroughton/traefik-cloudrun-provider)
+[![CI](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pci-tamper-protect/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/pci-tamper-protect/traefik-cloudrun-provider)
+[![Go Reference](https://pkg.go.dev/badge/github.com/pci-tamper-protect/traefik-cloudrun-provider.svg)](https://pkg.go.dev/github.com/pci-tamper-protect/traefik-cloudrun-provider)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 ```
 

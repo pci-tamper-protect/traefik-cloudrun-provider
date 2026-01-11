@@ -199,6 +199,6 @@ See [CONTRIBUTING.md](CONTRIBUTING.md) for:
 
 ## 📞 Support
 
-- **Issues:** [GitHub Issues](https://github.com/kestenbroughton/traefik-cloudrun-provider/issues)
-- **Discussions:** [GitHub Discussions](https://github.com/kestenbroughton/traefik-cloudrun-provider/discussions)
+- **Issues:** [GitHub Issues](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/discussions)
 - **Security:** Report vulnerabilities privately to maintainers

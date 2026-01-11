@@ -1,7 +1,7 @@
 # Traefik Cloud Run Provider
 
-[![CI](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/kestenbroughton/traefik-cloudrun-provider/actions/workflows/ci.yml)
-[![Go Report Card](https://goreportcard.com/badge/github.com/kestenbroughton/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/kestenbroughton/traefik-cloudrun-provider)
+[![CI](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml/badge.svg)](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/actions/workflows/ci.yml)
+[![Go Report Card](https://goreportcard.com/badge/github.com/pci-tamper-protect/traefik-cloudrun-provider)](https://goreportcard.com/report/github.com/pci-tamper-protect/traefik-cloudrun-provider)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
 A standalone provider that dynamically discovers Google Cloud Run services and generates Traefik routing configuration with automatic GCP identity token injection for service-to-service authentication.
@@ -46,32 +46,63 @@ Cloud Run Services (with traefik_* labels)
 
 ```bash
 # Clone the repository
-git clone https://github.com/kestenbroughton/traefik-cloudrun-provider
+git clone https://github.com/pci-tamper-protect/traefik-cloudrun-provider
 cd traefik-cloudrun-provider
 
 # Build the provider
 make build
 
 # Or install directly
-go install github.com/kestenbroughton/traefik-cloudrun-provider/cmd/provider@latest
+go install github.com/pci-tamper-protect/traefik-cloudrun-provider/cmd/provider@latest
 ```
 
 ### Configuration
 
-The provider is configured via environment variables:
+The provider is configured via environment variables. You can set them directly or use a `.env` file:
+
+**Option 1: Using .env file (recommended for local development)**
+
+```bash
+# Copy the sample file
+cp .env.sample .env
+
+# Edit .env with your values
+# Required:
+ENVIRONMENT=prod
+LABS_PROJECT_ID=my-project-prod
+REGION=us-central1
+
+# Optional:
+# HOME_PROJECT_ID=my-home-prod
+# LOG_LEVEL=INFO
+# LOG_FORMAT=text
+```
+
+**Option 2: Export environment variables**
 
 ```bash
 # Required
-export ENVIRONMENT=stg                    # Environment name
-export LABS_PROJECT_ID=labs-stg           # Primary GCP project
-export HOME_PROJECT_ID=labs-home-stg      # Secondary GCP project (optional)
+export ENVIRONMENT=prod                   # Environment name
+export LABS_PROJECT_ID=my-project-prod    # Primary GCP project (required)
 export REGION=us-central1                 # GCP region
 
 # Optional
+export HOME_PROJECT_ID=my-home-prod       # Secondary GCP project (optional)
 export LOG_LEVEL=INFO                     # DEBUG, INFO, WARN, ERROR
 export LOG_FORMAT=text                    # text or json
 export CLOUDRUN_PROVIDER_DEV_MODE=true    # Enable ADC fallback for local dev
 ```
+
+**Note**: In Cloud Run, set environment variables directly via `gcloud run deploy --set-env-vars`. The `.env` file is automatically loaded if present, but is optional.
+
+**Advanced**: For encrypted secrets support (`.env.vault`), you can swap the dotenv package:
+```go
+// In cmd/provider/main.go, replace:
+"github.com/joho/godotenv"
+// With:
+"github.com/dotenv-org/godotenvvault"
+```
+Then use [dotenvx](https://dotenvx.com) CLI for encryption. See [.env.sample](.env.sample) for details.
 
 ### Label Your Cloud Run Services
 
@@ -118,10 +149,24 @@ providers:
 
 Comprehensive configuration examples are available in the [examples/](examples/) directory:
 
-- **[traefik-static-config.yml](examples/traefik-static-config.yml)** - Traefik static configuration with all options
-- **[cloud-run-service-labels.yml](examples/cloud-run-service-labels.yml)** - Cloud Run service label patterns and examples
-- **[docker-compose-deployment.yml](examples/docker-compose-deployment.yml)** - Docker Compose deployment with provider
-- **[kubernetes-deployment.yml](examples/kubernetes-deployment.yml)** - Kubernetes/GKE deployment manifests
+### Configuration Files
+- **[.env.sample](.env.sample)** - Environment variable template (copy to `.env` for local development)
+- All configuration options documented with examples
+
+### Generic Examples (Getting Started)
+- **[basic-service-labels.yml](examples/basic-service-labels.yml)** - Simple, generic service label examples
+- Use these as templates for your own project
+
+### Real-World Examples
+- **[e-skimming-labs-labels.yml](examples/e-skimming-labs-labels.yml)** - Production examples from [e-skimming-labs](https://github.com/kestenbroughton/e-skimming-labs)
+- Shows complex multi-project routing with custom rule IDs
+
+### Platform Examples (Both)
+- **[traefik-static-config.yml](examples/traefik-static-config.yml)** - Traefik static configuration
+- **[docker-compose-deployment.yml](examples/docker-compose-deployment.yml)** - Docker Compose deployment
+- **[kubernetes-deployment.yml](examples/kubernetes-deployment.yml)** - Kubernetes/GKE deployment
+
+See [examples/README.md](examples/README.md) for detailed explanations of both approaches.
 
 ## Development
 
@@ -254,7 +299,7 @@ Deploy the provider as a Cloud Run service with Cloud Scheduler:
 gcloud run deploy traefik-cloudrun-provider \
   --source . \
   --region=us-central1 \
-  --set-env-vars="ENVIRONMENT=prod,LABS_PROJECT_ID=labs-prod,REGION=us-central1" \
+  --set-env-vars="ENVIRONMENT=prod,LABS_PROJECT_ID=my-project-prod,REGION=us-central1" \
   --no-allow-unauthenticated
 
 # Create Cloud Scheduler job (runs every 30s)
@@ -262,7 +307,7 @@ gcloud scheduler jobs create http refresh-routes \
   --location=us-central1 \
   --schedule="*/30 * * * * *" \
   --uri="https://traefik-cloudrun-provider-xyz.run.app/refresh" \
-  --oidc-service-account-email=scheduler@project.iam.gserviceaccount.com
+  --oidc-service-account-email=scheduler@PROJECT_ID.iam.gserviceaccount.com
 ```
 
 ### Environment Variables
@@ -323,5 +368,5 @@ This provider was created to solve Cloud Run + Traefik integration challenges fo
 
 ## Support
 
-- **Issues**: [GitHub Issues](https://github.com/kestenbroughton/traefik-cloudrun-provider/issues)
-- **Discussions**: [GitHub Discussions](https://github.com/kestenbroughton/traefik-cloudrun-provider/discussions)
+- **Issues**: [GitHub Issues](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/issues)
+- **Discussions**: [GitHub Discussions](https://github.com/pci-tamper-protect/traefik-cloudrun-provider/discussions)
