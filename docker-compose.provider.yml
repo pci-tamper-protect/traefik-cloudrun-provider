@@ -6,7 +6,7 @@ services:
   provider:
     build:
       context: .
-      dockerfile: Dockerfile.test
+      dockerfile: Dockerfile.provider
     volumes:
       - ./test-output:/output
       # Mount ADC credentials for local testing
@@ -32,12 +32,12 @@ services:
       - --log.level=DEBUG
       - --providers.file.directory=/etc/traefik/dynamic
       - --providers.file.watch=true
-      - --entryPoints.web.address=:8080
-      - --entryPoints.websecure.address=:8443
+      - --entryPoints.web.address=:80
+      - --entryPoints.websecure.address=:443
     ports:
-      - "8080:8080"   # Web entrypoint
-      - "8081:8081"   # Dashboard/API
-      - "8443:8443"   # Websecure entrypoint
+      - "${TRAEFIK_WEB_PORT:-8090}:80"           # Web entrypoint (local:container)
+      - "${TRAEFIK_API_PORT:-8091}:8080"         # Dashboard/API (local:container)
+      - "${TRAEFIK_WEBSECURE_PORT:-8493}:443"    # Websecure entrypoint (local:container)
     volumes:
       - ./test-output:/etc/traefik/dynamic:ro
     networks:

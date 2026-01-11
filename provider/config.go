@@ -48,6 +48,19 @@ func (c *DynamicConfig) AddService(name string, config ServiceConfig) {
 }
 
 // AddAuthMiddleware adds an authentication middleware with token
+// Uses X-Serverless-Authorization header for service-to-service auth to avoid conflicts
+// with user's Authorization header (Firebase token).
+//
+// According to Cloud Run docs:
+// https://docs.cloud.google.com/run/docs/authenticating/service-to-service
+// Cloud Run accepts identity tokens in either:
+// - Authorization: Bearer ID_TOKEN header, OR
+// - X-Serverless-Authorization: Bearer ID_TOKEN header
+//
+// Using X-Serverless-Authorization allows:
+// - User's Authorization header (Firebase token) to pass through unchanged
+// - Service-to-service auth via X-Serverless-Authorization
+// - No header conflicts or middleware ordering concerns
 func (c *DynamicConfig) AddAuthMiddleware(name, token string) {
 	mw := MiddlewareConfig{
 		Headers: &HeadersConfig{
@@ -56,9 +69,26 @@ func (c *DynamicConfig) AddAuthMiddleware(name, token string) {
 	}
 
 	if token != "" {
-		mw.Headers.CustomRequestHeaders["Authorization"] = fmt.Sprintf("Bearer %s", token)
+		// Use X-Serverless-Authorization to avoid conflicts with user's Authorization header
+		// Cloud Run will check this header for service-to-service authentication
+		// If both Authorization and X-Serverless-Authorization are present, Cloud Run
+		// only checks X-Serverless-Authorization (per Cloud Run docs)
+		mw.Headers.CustomRequestHeaders["X-Serverless-Authorization"] = fmt.Sprintf("Bearer %s", token)
+
+		// Log successful middleware creation with token info
+		tokenLen := len(token)
+		tokenPreview := "empty"
+		if tokenLen > 10 {
+			tokenPreview = token[:10] + "..."
+		} else if tokenLen > 0 {
+			tokenPreview = token[:tokenLen]
+		}
+		fmt.Printf("[ConfigBuilder] ✅ Created auth middleware '%s' with X-Serverless-Authorization header (token length: %d, preview: %s)\n",
+			name, tokenLen, tokenPreview)
 	} else {
-		mw.Headers.CustomRequestHeaders["Authorization"] = "Bearer TOKEN_FETCH_FAILED"
+		// Don't set invalid token - let service return 401 naturally
+		// This allows proper error handling
+		fmt.Printf("[ConfigBuilder] ⚠️  Created auth middleware '%s' WITHOUT token (will not set X-Serverless-Authorization header)\n", name)
 	}
 
 	c.HTTP.Middlewares[name] = mw

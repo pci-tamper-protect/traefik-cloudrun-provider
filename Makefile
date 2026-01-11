@@ -81,7 +81,7 @@ coverage-html: coverage
 ## docker-test: Run tests in Docker with ADC credentials
 docker-test:
 	@echo "$(GREEN)Building Docker test image...$(NC)"
-	docker build -f Dockerfile.test -t $(BINARY_NAME):test .
+	docker build -f Dockerfile.provider -t $(BINARY_NAME):test .
 	@echo "$(GREEN)Running tests in Docker...$(NC)"
 	docker run -it \
 		-v $(HOME)/.config/gcloud:/home/cloudrunner/.config/gcloud:ro \
@@ -94,10 +94,15 @@ docker-test:
 		$(BINARY_NAME):test \
 		/tmp/routes.yml
 
-## e2e-test: Run end-to-end tests
+## e2e-test: Run end-to-end architecture tests
 e2e-test:
-	@echo "$(GREEN)Running E2E tests...$(NC)"
+	@echo "$(GREEN)Running E2E architecture tests...$(NC)"
 	./test-e2e.sh
+
+## provider-test: Run Cloud Run provider tests with real GCP services
+provider-test:
+	@echo "$(GREEN)Running provider tests...$(NC)"
+	./test-provider.sh
 
 ##@ Code Quality
 

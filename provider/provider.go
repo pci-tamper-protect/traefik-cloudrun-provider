@@ -4,6 +4,7 @@ import (
 	"context"
 	"fmt"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/pci-tamper-protect/traefik-cloudrun-provider/internal/gcp"
@@ -152,17 +153,21 @@ func (p *Provider) pollLoop(configChan chan<- *DynamicConfig) {
 // updateConfig discovers services and generates Traefik configuration
 func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	startTime := time.Now()
+	p.logger.Info("🔍 Starting service discovery...")
 	config := NewDynamicConfig()
 
 	totalServices := 0
 
 	// Discover services from all configured projects
 	for _, projectID := range p.config.ProjectIDs {
-		p.logger.Debug("Listing services in project", logging.String("project", projectID))
+		p.logger.Info("🔍 Listing Cloud Run services in project",
+			logging.String("project", projectID),
+			logging.String("region", p.config.Region),
+		)
 
 		services, err := p.listServices(p.runService, projectID, p.config.Region)
 		if err != nil {
-			p.logger.Warn("Failed to list services in project",
+			p.logger.Error("❌ Failed to list services in project",
 				logging.String("project", projectID),
 				logging.Error(err),
 			)
@@ -170,28 +175,59 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 		}
 
 		totalServices += len(services)
-		p.logger.Info("Discovered services",
+		p.logger.Info("✅ Discovered services",
 			logging.String("project", projectID),
 			logging.Int("count", len(services)),
 		)
 
+		// Filter services with traefik_enable=true
+		traefikEnabledCount := 0
 		for _, service := range services {
-			if err := p.processService(service, config); err != nil {
-				p.logger.Warn("Failed to process service",
+			// Check if service has traefik_enable=true label
+			if enabled, ok := service.Labels["traefik_enable"]; ok && enabled == "true" {
+				traefikEnabledCount++
+				p.logger.Info("🔧 Processing Traefik-enabled service",
 					logging.String("service", service.Name),
 					logging.String("project", projectID),
-					logging.Error(err),
 				)
-				continue
+				if err := p.processService(service, config); err != nil {
+					p.logger.Error("❌ Failed to process service",
+						logging.String("service", service.Name),
+						logging.String("project", projectID),
+						logging.Error(err),
+					)
+					continue
+				}
+				p.logger.Info("✅ Service processed successfully",
+					logging.String("service", service.Name),
+				)
+			} else {
+				p.logger.Debug("⏭️  Skipping service (traefik_enable != true)",
+					logging.String("service", service.Name),
+				)
 			}
+		}
+		
+		if traefikEnabledCount == 0 {
+			p.logger.Warn("⚠️  No Traefik-enabled services found in project",
+				logging.String("project", projectID),
+				logging.Int("totalServices", len(services)),
+			)
+		} else {
+			p.logger.Info("✅ Processed Traefik-enabled services",
+				logging.String("project", projectID),
+				logging.Int("enabledCount", traefikEnabledCount),
+				logging.Int("totalServices", len(services)),
+			)
 		}
 	}
 
 	// Add Traefik API/Dashboard routers
+	p.logger.Debug("Adding Traefik internal routers (API/Dashboard)...")
 	config.AddTraefikInternalRouters()
 
 	duration := time.Since(startTime)
-	p.logger.Info("Configuration generation complete",
+	p.logger.Info("✅ Configuration generation complete",
 		logging.Int("totalServices", totalServices),
 		logging.Int("routers", len(config.HTTP.Routers)),
 		logging.Int("services", len(config.HTTP.Services)),
@@ -200,26 +236,32 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	)
 
 	// Send configuration to Traefik
+	p.logger.Info("📤 Sending configuration to channel...")
 	configChan <- config
+	p.logger.Info("✅ Configuration sent successfully")
 
 	return nil
 }
 
 // processService processes a single Cloud Run service and adds it to the configuration
 func (p *Provider) processService(service CloudRunService, config *DynamicConfig) error {
-	p.logger.Debug("Processing service",
+	p.logger.Info("🔧 Processing service",
 		logging.String("name", service.Name),
 		logging.String("project", service.ProjectID),
 		logging.String("url", service.URL),
 	)
 
 	// Extract router configs from labels
+	p.logger.Debug("Extracting router configurations from labels...")
 	routerConfigs := extractRouterConfigs(service.Labels, service.Name)
 	if len(routerConfigs) == 0 {
+		p.logger.Warn("⚠️  No router labels found for service",
+			logging.String("service", service.Name),
+		)
 		return fmt.Errorf("no router labels found")
 	}
 
-	p.logger.Debug("Extracted router configurations",
+	p.logger.Info("✅ Extracted router configurations",
 		logging.String("service", service.Name),
 		logging.Int("routerCount", len(routerConfigs)),
 	)
@@ -234,18 +276,52 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	}
 
 	// Get identity token for service
+	// This token will be used in Authorization header for Cloud Run service-to-service auth
+	p.logger.Debug("Fetching identity token for service",
+		logging.String("service", service.Name),
+		logging.String("url", service.URL),
+	)
+	
 	serviceToken, err := p.tokenManager.GetToken(service.URL)
 	if err != nil {
-		p.logger.Warn("Failed to fetch identity token for service",
+		p.logger.Error("❌ Failed to fetch identity token for service",
 			logging.String("service", service.Name),
+			logging.String("url", service.URL),
 			logging.Error(err),
 		)
-		// Continue without token - middleware will have error marker
+		// Log detailed error for debugging
+		if strings.Contains(err.Error(), "metadata server") {
+			p.logger.Error("Metadata server issue - check if running in Cloud Run or set CLOUDRUN_PROVIDER_DEV_MODE=true",
+				logging.String("service", service.Name),
+			)
+		}
+		if strings.Contains(err.Error(), "ADC") {
+			p.logger.Error("ADC issue - run 'gcloud auth application-default login' for local development",
+				logging.String("service", service.Name),
+			)
+		}
+		// Continue without token - service will return 401
+		serviceToken = ""
 	} else {
-		p.logger.Debug("Fetched identity token",
-			logging.String("service", service.Name),
-			logging.Int("tokenLength", len(serviceToken)),
-		)
+		// Validate token format
+		if !strings.HasPrefix(serviceToken, "eyJ") {
+			previewLen := 20
+			if len(serviceToken) < previewLen {
+				previewLen = len(serviceToken)
+			}
+			p.logger.Error("❌ Token doesn't look valid (should start with eyJ for JWT)",
+				logging.String("service", service.Name),
+				logging.String("tokenPreview", serviceToken[:previewLen]),
+				logging.Int("tokenLength", len(serviceToken)),
+			)
+			serviceToken = ""
+		} else {
+			p.logger.Info("✅ Successfully fetched identity token for service",
+				logging.String("service", service.Name),
+				logging.String("url", service.URL),
+				logging.Int("tokenLength", len(serviceToken)),
+			)
+		}
 	}
 
 	// Create auth middleware
@@ -254,19 +330,24 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 
 	// Add routers (with auth middleware and retry middleware)
 	for routerName, routerConfig := range routerConfigs {
-		// Add auth middleware if not already present
-		hasAuth := false
+		// Add service auth middleware if not already present
+		// Note: Middleware order doesn't matter for header conflicts since we use
+		// X-Serverless-Authorization (doesn't conflict with user's Authorization header)
+		hasServiceAuth := false
 		for _, mw := range routerConfig.Middlewares {
 			if mw == authMiddlewareName || mw == fmt.Sprintf("%s@file", authMiddlewareName) {
-				hasAuth = true
+				hasServiceAuth = true
 				break
 			}
 		}
-		if !hasAuth {
-			routerConfig.Middlewares = append(routerConfig.Middlewares, authMiddlewareName)
+
+		if !hasServiceAuth {
+			// Prepend service auth middleware (runs before other middlewares)
+			// This ensures service-to-service auth is set early in the request chain
+			routerConfig.Middlewares = append([]string{authMiddlewareName}, routerConfig.Middlewares...)
 		}
 
-		// Always add retry middleware for cold starts
+		// Always add retry middleware for cold starts (at the end)
 		hasRetry := false
 		for _, mw := range routerConfig.Middlewares {
 			if mw == "retry-cold-start@file" {

@@ -130,7 +130,7 @@ go test ./...
 ### Test with Local ADC Credentials
 
 ```dockerfile
-# Dockerfile.test
+# Dockerfile.provider
 FROM golang:1.21
 
 WORKDIR /app
@@ -150,7 +150,7 @@ ENTRYPOINT ["./bin/traefik-cloudrun-provider"]
 
 ```bash
 # Build test image
-docker build -f Dockerfile.test -t traefik-cloudrun-provider:test .
+docker build -f Dockerfile.provider -t traefik-cloudrun-provider:test .
 
 # Run with ADC credentials mounted
 docker run -it \
@@ -309,7 +309,7 @@ Architecture verified:
 Access points:
   Frontend:  http://app.localhost/
   Backend:   http://api.localhost/api/hello
-  Dashboard: http://traefik.localhost:8081/dashboard/
+  Dashboard: http://traefik.localhost:${TRAEFIK_API_PORT:-8091}/dashboard/
 ```
 
 ### Manual Testing
@@ -325,7 +325,7 @@ curl -H "Host: app.localhost" http://localhost/
 curl -H "Host: api.localhost" http://localhost/api/hello
 
 # View Traefik dashboard
-open http://traefik.localhost:8081/dashboard/
+open http://traefik.localhost:${TRAEFIK_API_PORT:-8091}/dashboard/
 
 # View logs
 docker-compose -f docker-compose.e2e.yml logs -f
