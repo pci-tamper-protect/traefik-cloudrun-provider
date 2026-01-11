@@ -1,0 +1,129 @@
+# Docker Compose Deployment Example
+# This shows how to deploy Traefik with the Cloud Run provider in production
+
+version: '3.8'
+
+services:
+  # Traefik Gateway with Cloud Run Provider
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik
+    restart: unless-stopped
+
+    ports:
+      - "80:80"
+      - "443:443"
+      - "8081:8081"  # Dashboard (secure in production)
+
+    environment:
+      # Provider configuration
+      - ENVIRONMENT=prod
+      - LABS_PROJECT_ID=labs-prod
+      - HOME_PROJECT_ID=labs-home-prod
+      - REGION=us-central1
+      - LOG_LEVEL=INFO
+      - LOG_FORMAT=json
+
+    volumes:
+      # Traefik configuration
+      - ./traefik.yml:/etc/traefik/traefik.yml:ro
+      - ./dynamic:/etc/traefik/dynamic:rw
+
+      # SSL certificates
+      - ./acme.json:/etc/traefik/acme.json
+
+      # GCP credentials (for local testing)
+      - ~/.config/gcloud:/root/.config/gcloud:ro
+
+    command:
+      # Start provider to generate routes
+      - /bin/sh
+      - -c
+      - |
+        /usr/local/bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes.yml
+        exec traefik
+
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.example.com`)"
+      - "traefik.http.routers.dashboard.entrypoints=websecure"
+      - "traefik.http.routers.dashboard.service=api@internal"
+      - "traefik.http.routers.dashboard.middlewares=auth"
+
+      # Basic auth for dashboard (generate with: htpasswd -nb admin password)
+      - "traefik.http.middlewares.auth.basicauth.users=admin:$$apr1$$H6uskkkW$$IgXLP6ewTrSuBkTrqE8wj/"
+
+    networks:
+      - traefik-network
+
+  # Optional: Provider sidecar for continuous refresh
+  provider-refresh:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: provider-refresh
+    restart: unless-stopped
+
+    environment:
+      - ENVIRONMENT=prod
+      - LABS_PROJECT_ID=labs-prod
+      - HOME_PROJECT_ID=labs-home-prod
+      - REGION=us-central1
+      - LOG_LEVEL=INFO
+      - REFRESH_INTERVAL=30s
+
+    volumes:
+      - ./dynamic:/etc/traefik/dynamic:rw
+      - ~/.config/gcloud:/home/cloudrunner/.config/gcloud:ro
+
+    command:
+      # Refresh routes every 30 seconds
+      - /bin/sh
+      - -c
+      - |
+        while true; do
+          /usr/local/bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes.yml
+          sleep 30
+        done
+
+    networks:
+      - traefik-network
+
+    depends_on:
+      - traefik
+
+networks:
+  traefik-network:
+    driver: bridge
+
+# ============================================
+# Production Notes
+# ============================================
+#
+# 1. Security:
+#    - Remove dashboard in production or secure with strong auth
+#    - Use proper SSL certificates (not self-signed)
+#    - Run as non-root user
+#    - Limit container capabilities
+#
+# 2. GCP Authentication:
+#    - In Cloud Run: Uses metadata server (automatic)
+#    - In GCE/GKE: Uses metadata server (automatic)
+#    - Local: Mount gcloud config directory
+#    - CI/CD: Use service account key file
+#
+# 3. Persistence:
+#    - acme.json for SSL certificates
+#    - dynamic/ directory for generated routes
+#    - Consider volume backup
+#
+# 4. Monitoring:
+#    - Enable Prometheus metrics (see traefik.yml)
+#    - Set up health checks
+#    - Monitor provider logs
+#    - Alert on route generation failures
+#
+# 5. Scaling:
+#    - Traefik can handle high traffic
+#    - Provider refresh interval: 30s is good balance
+#    - Consider running provider as cron job instead of sidecar

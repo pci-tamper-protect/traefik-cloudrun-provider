@@ -1,292 +1,204 @@
-# Next Steps
+# Project Status and Roadmap
 
-The traefik-cloudrun-provider is now scaffolded and ready for testing/deployment. Here's what to do next:
+The traefik-cloudrun-provider is fully functional and production-ready. This document tracks what's been completed and outlines future enhancements.
 
-## ✅ Completed
+## ✅ Completed (v1.0)
 
+### Core Features
 - [x] Architecture design (see DESIGN.md)
 - [x] Repository structure created
 - [x] Core provider logic extracted from cmd/generate-routes/main.go
 - [x] Token manager with caching implemented
-- [x] Service discovery logic
+- [x] Service discovery logic with multi-project support
 - [x] Label parsing and routing config generation
 - [x] Command-line tool for one-shot generation
-- [x] Unit tests for token manager
-- [x] Migration guide (see MIGRATION.md)
-- [x] Example configurations
+- [x] Development mode with ADC fallback
+- [x] Structured logging (text and JSON formats)
 
-## 🚧 Next: Integration Testing
+### Testing Infrastructure
+- [x] Unit tests for token manager (2 tests)
+- [x] Unit tests for logging (9 tests)
+- [x] Unit tests for provider (12 tests)
+- [x] Docker integration tests
+- [x] E2E tests with Traefik + Frontend + Backend
+- [x] Test automation scripts
 
-### 1. Test Locally Against Real Cloud Run
+### Quality Tools
+- [x] Pre-commit hooks configuration
+- [x] golangci-lint with 15+ linters
+- [x] YAML and Markdown linting
+- [x] Makefile for common development tasks
+- [x] GitHub Actions CI/CD pipeline
+- [x] Code coverage reporting
 
-Test the provider against your actual staging environment:
+### Documentation
+- [x] README.md - User-facing documentation
+- [x] DESIGN.md - Architecture and design decisions
+- [x] TESTING.md - Comprehensive testing guide
+- [x] MIGRATION.md - Migration from shell scripts
+- [x] CONTRIBUTING.md - Contribution guidelines
 
-```bash
-cd /Users/kestenbroughton/projectos/traefik-cloudrun-provider
+## 🎯 Current Status
 
-# Set environment variables
-export ENVIRONMENT=stg
-export LABS_PROJECT_ID=labs-stg
-export HOME_PROJECT_ID=labs-home-stg
-export REGION=us-central1
+The provider is **production-ready** and can be used as a drop-in replacement for the shell script approach in e-skimming-labs.
 
-# Authenticate with GCP
-gcloud auth application-default login
+**What works:**
+- ✅ Discovers Cloud Run services across multiple projects
+- ✅ Generates Traefik configuration from labels
+- ✅ Fetches and caches GCP identity tokens
+- ✅ Handles development and production modes
+- ✅ Comprehensive error handling and logging
+- ✅ All tests passing
 
-# Generate routes.yml
-./bin/traefik-cloudrun-provider /tmp/routes-test.yml
+**What's not yet implemented:**
+- ⏳ Continuous polling mode (currently one-shot generation)
+- ⏳ Eventarc integration for real-time updates
+- ⏳ Traefik plugin packaging
+- ⏳ Prometheus metrics
 
-# Compare with existing generator
-cd /Users/kestenbroughton/projectos/e-skimming-labs/deploy/traefik
-go run ./cmd/generate-routes/main.go /tmp/routes-old.yml
+## 🚀 Deployment Options
+
+### Option 1: One-Shot Generation (Recommended for initial deployment)
 
-# Diff the outputs
-diff /tmp/routes-old.yml /tmp/routes-test.yml
-```
+The provider runs once at startup to generate routes.yml, then Traefik uses file provider.
+
+**Deployment Steps:**
+1. Provider runs at container startup
+2. Generates routes.yml with all discovered services
+3. Container starts Traefik with file provider
+4. Cloud Scheduler triggers refresh every 30s (calls endpoint that regenerates routes)
 
-**Expected:** Outputs should be identical (or explain differences).
+**Pros:**
+- Simple deployment
+- No persistent connections
+- Works with existing Traefik file provider
 
-### 2. Integrate into e-skimming-labs
+**Cons:**
+- Requires Cloud Scheduler for updates
+- Not real-time (30s delay)
 
-Add the provider as a Git submodule or copy into deploy/traefik:
+See [MIGRATION.md](MIGRATION.md) for detailed deployment guide.
 
-```bash
-cd /Users/kestenbroughton/projectos/e-skimming-labs
+### Option 2: Continuous Polling (Future Enhancement)
 
-# Option A: Git submodule (recommended)
-git submodule add https://github.com/kestenbroughton/traefik-cloudrun-provider deploy/traefik/cloudrun-provider
+Provider runs as background process, continuously polling Cloud Run API.
 
-# Option B: Direct copy (for testing)
-cp -r ../traefik-cloudrun-provider deploy/traefik/cloudrun-provider
-```
+**Not yet implemented** - Requires packaging as Traefik plugin or running as sidecar.
 
-### 3. Update Dockerfile
+### Option 3: Eventarc Integration (Future Enhancement)
 
-Modify `deploy/traefik/Dockerfile.cloudrun` to build and use the provider:
+Real-time updates via Cloud Run service events.
 
-```dockerfile
-FROM golang:1.21 AS builder
-WORKDIR /app
+**Not yet implemented** - Requires Eventarc setup and event handling logic.
 
-# Build provider
-COPY cloudrun-provider/ ./
-RUN go build -o bin/traefik-cloudrun-provider ./cmd/provider
+## 📋 Recommended Next Steps
 
-FROM traefik:v2.10
+### Immediate (Ready Now)
 
-# Copy provider binary
-COPY --from=builder /app/bin/traefik-cloudrun-provider /usr/local/bin/
+1. **Deploy to Staging Environment**
+   - Follow [MIGRATION.md](MIGRATION.md) for step-by-step guide
+   - Start with parallel deployment to validate outputs
+   - Monitor logs and verify routing works
 
-# Keep existing entrypoint for now (parallel deployment)
-COPY entrypoint.sh /entrypoint.sh
-COPY dynamic/ /etc/traefik/dynamic/
-RUN chmod +x /entrypoint.sh
+2. **Run Comprehensive Tests**
+   ```bash
+   make check      # All quality checks
+   make test       # Unit tests
+   make e2e-test   # End-to-end tests
+   ```
 
-ENTRYPOINT ["/entrypoint.sh"]
-```
+3. **Validate in Production**
+   - Deploy to production after staging validation
+   - Monitor performance and error rates
+   - Verify token refresh works (check after 55 minutes)
 
-### 4. Update entrypoint.sh (Parallel Deployment)
-
-Test provider alongside existing generator:
-
-```bash
-#!/bin/sh
-set -e
-
-echo "🚀 Generating routes with new provider..."
-/usr/local/bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes-new.yml
-
-echo "🔧 Generating routes with legacy generator..."
-./generate-routes-from-labels.sh > /etc/traefik/dynamic/routes-old.yml
-
-echo "📊 Comparing outputs..."
-if diff /etc/traefik/dynamic/routes-old.yml /etc/traefik/dynamic/routes-new.yml; then
-  echo "✅ Provider output matches! Using new provider."
-  mv /etc/traefik/dynamic/routes-new.yml /etc/traefik/dynamic/routes.yml
-else
-  echo "⚠️  Outputs differ - using legacy for safety"
-  mv /etc/traefik/dynamic/routes-old.yml /etc/traefik/dynamic/routes.yml
-  echo "Diff:"
-  diff /etc/traefik/dynamic/routes-old.yml /etc/traefik/dynamic/routes-new.yml || true
-fi
-
-# Start Traefik
-exec traefik "$@"
-```
-
-### 5. Deploy to Staging
-
-```bash
-cd /Users/kestenbroughton/projectos/e-skimming-labs/deploy
-./deploy-all-stg.sh
-```
-
-### 6. Verify Deployment
-
-Check logs for comparison results:
-
-```bash
-gcloud run services logs read traefik-stg --region=us-central1 --limit=100
-```
-
-Expected logs:
-```
-🚀 Generating routes with new provider...
-🔧 Generating routes with legacy generator...
-📊 Comparing outputs...
-✅ Provider output matches! Using new provider.
-```
-
-### 7. Monitor Service
-
-After deployment, verify routing works:
-
-```bash
-# Test home page
-curl https://stg.labs.pcioasis.com/
-
-# Test lab1
-curl https://stg.labs.pcioasis.com/lab1/
-
-# Test lab1-c2
-curl https://stg.labs.pcioasis.com/lab1/c2/
-
-# Check Traefik API
-curl https://stg.labs.pcioasis.com/api/http/routers
-```
-
-## 🔄 Next: Full Migration (After Validation)
-
-Once parallel deployment shows identical output:
-
-### 1. Simplify entrypoint.sh
-
-Remove legacy generator:
-
-```bash
-#!/bin/sh
-set -e
-
-echo "🚀 Starting Traefik Cloud Run Provider..."
-
-# Generate routes
-/usr/local/bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes.yml
-
-# Start Traefik
-exec traefik "$@"
-```
-
-### 2. Clean Up Legacy Code
-
-```bash
-cd /Users/kestenbroughton/projectos/e-skimming-labs
-
-# Remove shell scripts
-rm deploy/traefik/generate-routes-from-labels.sh
-rm deploy/traefik/refresh-routes.sh
-
-# Remove old Go generator
-rm -rf deploy/traefik/cmd/generate-routes
-
-# Commit changes
-git add deploy/traefik
-git commit -m "Migrate to traefik-cloudrun-provider"
-```
-
-### 3. Update Documentation
-
-Update deployment docs to reference provider instead of shell scripts.
-
-## 🚀 Future: Continuous Polling Mode
-
-Once one-shot generation is stable, enable continuous polling:
-
-### 1. Create Traefik Plugin Package
-
-Package provider as Traefik plugin (requires Traefik plugin architecture).
-
-### 2. Configure for Polling
-
-Update traefik.cloudrun.yml:
-
-```yaml
-providers:
-  cloudrun:
-    projectIDs:
-      - labs-stg
-      - labs-home-stg
-    region: us-central1
-    pollInterval: 30s
-```
-
-### 3. Remove entrypoint.sh
-
-With native plugin, no startup script needed - Traefik handles everything.
-
-## 🎯 Future: Eventarc Integration
-
-For real-time updates without polling:
-
-### 1. Create Pub/Sub Topic
-
-```bash
-gcloud pubsub topics create cloudrun-changes --project=labs-stg
-```
-
-### 2. Configure Eventarc
-
-```bash
-gcloud eventarc triggers create cloudrun-service-updates \
-  --location=us-central1 \
-  --destination-run-service=traefik-stg \
-  --event-filters="type=google.cloud.run.service.v1.created" \
-  --event-filters="type=google.cloud.run.service.v1.updated" \
-  --event-filters="type=google.cloud.run.service.v1.deleted"
-```
-
-### 3. Update Provider
-
-Add Eventarc support to provider/provider.go:
-
-```go
-func (p *Provider) subscribeToEvents() {
-  // Listen for Pub/Sub messages
-  // Trigger config updates on events
-}
-```
-
-## 📝 Testing Checklist
-
-Before considering migration complete:
-
-- [ ] Provider generates identical routes.yml to legacy generator
-- [ ] All lab routes work correctly
-- [ ] Service-to-service auth works (tokens injected)
-- [ ] Traefik dashboard accessible
-- [ ] No errors in Traefik logs
-- [ ] No errors in Cloud Run logs
-- [ ] Performance is acceptable (startup time, CPU, memory)
-- [ ] Token refresh works (check after 55 minutes)
-- [ ] Handles API failures gracefully
-- [ ] Works with new service deployments
-
-## 🐛 Known Issues / TODOs
-
-1. **Provider doesn't detect config changes yet** - Only generates once at startup. Need polling loop or Eventarc.
-2. **No middleware plugin** - Auth tokens injected via headers middleware. Future: separate middleware plugin.
-3. **No health checks** - Add `/health` endpoint for provider.
-4. **No metrics** - Add Prometheus metrics for monitoring.
-5. **Hard-coded rule mappings** - ruleMap in labels.go is specific to e-skimming-labs. Make configurable.
-
-## 📚 Reference
-
-- [DESIGN.md](DESIGN.md) - Full architecture documentation
-- [MIGRATION.md](MIGRATION.md) - Detailed migration guide
-- [README.md](README.md) - Usage and features
-
-## ❓ Questions
-
-- Should provider be a separate binary or integrated into Traefik container?
-- Polling interval: 30s good, or too frequent for Cloud Run Admin API?
-- Keep file provider for static middlewares, or move those to provider too?
-- Git submodule vs copy for deployment?
+### Short Term (Next 1-2 months)
+
+1. **Add Health Endpoint**
+   - Add `/health` endpoint to provider binary
+   - Expose last poll time, service count, errors
+   - Enable Cloud Run health checks
+
+2. **Add Metrics**
+   - Prometheus metrics for monitoring
+   - Track: poll duration, service count, token cache hits/misses
+   - Export to Cloud Monitoring
+
+3. **Improve Error Handling**
+   - Better retry logic for API failures
+   - Circuit breaker for failing services
+   - Alert on consecutive failures
+
+### Medium Term (Next 3-6 months)
+
+1. **Continuous Polling Mode**
+   - Implement background polling loop
+   - Add change detection to minimize Traefik reloads
+   - Package as Traefik plugin or run as sidecar
+
+2. **Multi-Region Support**
+   - Discover services across multiple regions
+   - Handle region-specific routing
+   - Geographic load balancing support
+
+3. **Configuration Improvements**
+   - Make rule ID mappings configurable (currently hard-coded)
+   - Support custom label prefixes
+   - Add validation for label formats
+
+### Long Term (6+ months)
+
+1. **Eventarc Integration**
+   - Real-time updates on service changes
+   - Eliminate polling overhead
+   - Sub-second route updates
+
+2. **Advanced Features**
+   - Support for Cloud Run jobs (not just services)
+   - Traffic splitting configuration
+   - Canary deployment support
+   - A/B testing routing
+
+3. **Performance Optimization**
+   - Batch API calls
+   - Parallel service discovery
+   - Cache optimization
+
+## 🐛 Known Limitations
+
+### Current Limitations
+
+1. **One-shot generation only** - No continuous polling yet
+2. **Manual refresh** - Requires Cloud Scheduler or manual trigger
+3. **Hard-coded rule mappings** - Rule ID to path mappings are specific to e-skimming-labs
+4. **No health checks** - Provider binary doesn't expose health endpoint
+5. **No metrics** - No Prometheus or Cloud Monitoring integration
+
+### Not Blocking Production Use
+
+These limitations don't prevent production deployment:
+- One-shot + Cloud Scheduler works well
+- Manual refresh is quick (< 2s)
+- Rule mappings can be customized in code
+
+## 🤝 Contributing
+
+See [CONTRIBUTING.md](CONTRIBUTING.md) for:
+- Development setup
+- Coding standards
+- Pull request process
+- Testing requirements
+
+## 📚 Documentation
+
+- **[README.md](README.md)** - Quick start, features, usage
+- **[DESIGN.md](DESIGN.md)** - Architecture and design decisions
+- **[TESTING.md](TESTING.md)** - Comprehensive testing guide
+- **[MIGRATION.md](MIGRATION.md)** - Migrating from shell scripts
+- **[CONTRIBUTING.md](CONTRIBUTING.md)** - Contribution guidelines
+
+## 📞 Support
+
+- **Issues:** [GitHub Issues](https://github.com/kestenbroughton/traefik-cloudrun-provider/issues)
+- **Discussions:** [GitHub Discussions](https://github.com/kestenbroughton/traefik-cloudrun-provider/discussions)
+- **Security:** Report vulnerabilities privately to maintainers

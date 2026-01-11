@@ -1,0 +1,113 @@
+# Traefik Static Configuration Example
+# This example shows how to configure Traefik to use the Cloud Run provider
+
+# ============================================
+# Current Architecture: External Binary + File Provider
+# ============================================
+# The provider runs as a separate binary that generates routes.yml
+# Traefik uses the file provider to read the generated configuration
+
+## Option 1: File Provider (Current - Recommended)
+providers:
+  file:
+    filename: /etc/traefik/dynamic/routes.yml
+    watch: false  # Provider regenerates file on each run
+
+# The provider binary runs via:
+# - Container entrypoint (startup)
+# - Cloud Scheduler (periodic refresh)
+# - Manual trigger
+
+# ============================================
+# Future Architecture: Native Plugin (Not Yet Implemented)
+# ============================================
+# When converted to a native plugin, configuration would look like:
+
+# providers:
+#   cloudrun:
+#     # Required: GCP projects to discover services from
+#     projectIDs:
+#       - labs-prod
+#       - labs-home-prod
+#
+#     # Required: GCP region for Cloud Run services
+#     region: us-central1
+#
+#     # Optional: Polling interval for service discovery
+#     pollInterval: 30s
+#
+#     # Optional: Token cache settings
+#     tokenCache:
+#       refreshBeforeExpiry: 5m  # Refresh tokens 5min before expiry
+#
+#     # Optional: Development mode (use ADC instead of metadata server)
+#     devMode: false
+#
+#     # Optional: Logging configuration
+#     logging:
+#       level: INFO  # DEBUG, INFO, WARN, ERROR
+#       format: json  # json or text
+
+# ============================================
+# Entrypoints
+# ============================================
+entryPoints:
+  web:
+    address: ":80"
+    # Redirect HTTP to HTTPS
+    http:
+      redirections:
+        entryPoint:
+          to: websecure
+          scheme: https
+
+  websecure:
+    address: ":443"
+    http:
+      tls:
+        certResolver: letsencrypt
+
+# ============================================
+# API and Dashboard
+# ============================================
+api:
+  dashboard: true
+  insecure: false  # Require auth for dashboard
+
+# ============================================
+# Certificate Resolvers
+# ============================================
+certificatesResolvers:
+  letsencrypt:
+    acme:
+      email: admin@example.com
+      storage: /etc/traefik/acme.json
+      httpChallenge:
+        entryPoint: web
+
+# ============================================
+# Logging
+# ============================================
+log:
+  level: INFO
+  format: json
+
+accessLog:
+  format: json
+  fields:
+    defaultMode: keep
+    headers:
+      defaultMode: keep
+
+# ============================================
+# Metrics (Optional)
+# ============================================
+# metrics:
+#   prometheus:
+#     entryPoint: metrics
+#     addServicesLabels: true
+#     addEntryPointsLabels: true
+
+# entryPoints:
+#   metrics:
+#     address: ":8082"

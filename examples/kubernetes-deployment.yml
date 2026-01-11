@@ -1,0 +1,321 @@
+# Kubernetes Deployment Example
+# Deploy Traefik with Cloud Run provider in GKE
+
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: traefik-system
+
+---
+# ConfigMap for Traefik static configuration
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: traefik-config
+  namespace: traefik-system
+data:
+  traefik.yml: |
+    entryPoints:
+      web:
+        address: ":80"
+        http:
+          redirections:
+            entryPoint:
+              to: websecure
+              scheme: https
+      websecure:
+        address: ":443"
+
+    providers:
+      file:
+        filename: /etc/traefik/dynamic/routes.yml
+        watch: true
+
+    api:
+      dashboard: true
+      insecure: false
+
+    log:
+      level: INFO
+      format: json
+
+    accessLog:
+      format: json
+
+---
+# Deployment for Traefik
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: traefik
+  namespace: traefik-system
+  labels:
+    app: traefik
+spec:
+  replicas: 2
+  selector:
+    matchLabels:
+      app: traefik
+  template:
+    metadata:
+      labels:
+        app: traefik
+    spec:
+      serviceAccountName: traefik
+
+      initContainers:
+      # Generate initial routes
+      - name: init-routes
+        image: kestenbroughton/traefik-cloudrun-provider:v1.0.0
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: environment
+        - name: LABS_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: labs_project_id
+        - name: HOME_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: home_project_id
+        - name: REGION
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: region
+        - name: LOG_LEVEL
+          value: "INFO"
+        volumeMounts:
+        - name: dynamic-config
+          mountPath: /etc/traefik/dynamic
+        command:
+        - /usr/local/bin/traefik-cloudrun-provider
+        - /etc/traefik/dynamic/routes.yml
+
+      containers:
+      # Traefik container
+      - name: traefik
+        image: traefik:v2.10
+        ports:
+        - name: web
+          containerPort: 80
+        - name: websecure
+          containerPort: 443
+        - name: dashboard
+          containerPort: 8080
+        volumeMounts:
+        - name: traefik-config
+          mountPath: /etc/traefik
+          readOnly: true
+        - name: dynamic-config
+          mountPath: /etc/traefik/dynamic
+          readOnly: true
+        resources:
+          requests:
+            memory: "128Mi"
+            cpu: "100m"
+          limits:
+            memory: "512Mi"
+            cpu: "500m"
+        livenessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        readinessProbe:
+          httpGet:
+            path: /ping
+            port: 8080
+          initialDelaySeconds: 5
+          periodSeconds: 5
+
+      # Sidecar: Refresh routes periodically
+      - name: route-refresher
+        image: kestenbroughton/traefik-cloudrun-provider:v1.0.0
+        env:
+        - name: ENVIRONMENT
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: environment
+        - name: LABS_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: labs_project_id
+        - name: HOME_PROJECT_ID
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: home_project_id
+        - name: REGION
+          valueFrom:
+            configMapKeyRef:
+              name: provider-config
+              key: region
+        - name: LOG_LEVEL
+          value: "INFO"
+        - name: REFRESH_INTERVAL
+          value: "30"
+        volumeMounts:
+        - name: dynamic-config
+          mountPath: /etc/traefik/dynamic
+        command:
+        - /bin/sh
+        - -c
+        - |
+          while true; do
+            /usr/local/bin/traefik-cloudrun-provider /etc/traefik/dynamic/routes.yml
+            sleep ${REFRESH_INTERVAL}
+          done
+        resources:
+          requests:
+            memory: "64Mi"
+            cpu: "50m"
+          limits:
+            memory: "256Mi"
+            cpu: "200m"
+
+      volumes:
+      - name: traefik-config
+        configMap:
+          name: traefik-config
+      - name: dynamic-config
+        emptyDir: {}
+
+---
+# Service for Traefik
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik
+  namespace: traefik-system
+spec:
+  type: LoadBalancer
+  selector:
+    app: traefik
+  ports:
+  - name: web
+    port: 80
+    targetPort: web
+  - name: websecure
+    port: 443
+    targetPort: websecure
+
+---
+# Service for Traefik Dashboard (internal only)
+apiVersion: v1
+kind: Service
+metadata:
+  name: traefik-dashboard
+  namespace: traefik-system
+spec:
+  type: ClusterIP
+  selector:
+    app: traefik
+  ports:
+  - name: dashboard
+    port: 8080
+    targetPort: dashboard
+
+---
+# ConfigMap for Provider settings
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: provider-config
+  namespace: traefik-system
+data:
+  environment: "prod"
+  labs_project_id: "labs-prod"
+  home_project_id: "labs-home-prod"
+  region: "us-central1"
+
+---
+# ServiceAccount for Traefik (with Workload Identity)
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: traefik
+  namespace: traefik-system
+  annotations:
+    iam.gke.io/gcp-service-account: traefik@PROJECT_ID.iam.gserviceaccount.com
+
+---
+# RBAC (if needed for Kubernetes provider - not required for Cloud Run provider)
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: traefik
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - services
+  - endpoints
+  - secrets
+  verbs:
+  - get
+  - list
+  - watch
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: traefik
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: traefik
+subjects:
+- kind: ServiceAccount
+  name: traefik
+  namespace: traefik-system
+
+---
+# HorizontalPodAutoscaler for Traefik
+apiVersion: autoscaling/v2
+kind: HorizontalPodAutoscaler
+metadata:
+  name: traefik
+  namespace: traefik-system
+spec:
+  scaleTargetRef:
+    apiVersion: apps/v1
+    kind: Deployment
+    name: traefik
+  minReplicas: 2
+  maxReplicas: 10
+  metrics:
+  - type: Resource
+    resource:
+      name: cpu
+      target:
+        type: Utilization
+        averageUtilization: 70
+  - type: Resource
+    resource:
+      name: memory
+      target:
+        type: Utilization
+        averageUtilization: 80
+
+---
+# PodDisruptionBudget for high availability
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: traefik
+  namespace: traefik-system
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: traefik

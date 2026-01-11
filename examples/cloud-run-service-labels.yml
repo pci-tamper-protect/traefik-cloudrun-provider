@@ -1,0 +1,189 @@
+# Cloud Run Service Label Configuration Examples
+# These labels are added to your Cloud Run services to configure Traefik routing
+
+# ============================================
+# Example 1: Simple Service with One Route
+# ============================================
+# Apply to Cloud Run service via gcloud:
+#
+# gcloud run services update my-service \
+#   --region=us-central1 \
+#   --update-labels="\
+# traefik_enable=true,\
+# traefik_http_routers_myapp_rule=Host(\`app.example.com\`),\
+# traefik_http_routers_myapp_entrypoints=websecure,\
+# traefik_http_services_myapp_lb_port=8080"
+
+labels:
+  # Enable Traefik routing
+  traefik_enable: "true"
+
+  # Router configuration
+  traefik_http_routers_myapp_rule: "Host(`app.example.com`)"
+  traefik_http_routers_myapp_entrypoints: "websecure"
+  traefik_http_routers_myapp_tls_certresolver: "letsencrypt"
+
+  # Service configuration
+  traefik_http_services_myapp_lb_port: "8080"
+
+# ============================================
+# Example 2: Multiple Routes (Frontend App)
+# ============================================
+# Service with multiple routers for different paths
+
+labels:
+  traefik_enable: "true"
+
+  # Main app route
+  traefik_http_routers_app_rule: "Host(`example.com`) && PathPrefix(`/`)"
+  traefik_http_routers_app_priority: "100"
+  traefik_http_routers_app_entrypoints: "websecure"
+  traefik_http_routers_app_service: "frontend"
+
+  # API route
+  traefik_http_routers_app_api_rule: "Host(`example.com`) && PathPrefix(`/api`)"
+  traefik_http_routers_app_api_priority: "200"
+  traefik_http_routers_app_api_entrypoints: "websecure"
+  traefik_http_routers_app_api_service: "frontend"
+
+  # Static assets
+  traefik_http_routers_app_static_rule: "Host(`example.com`) && PathPrefix(`/static`)"
+  traefik_http_routers_app_static_priority: "300"
+  traefik_http_routers_app_static_entrypoints: "websecure"
+  traefik_http_routers_app_static_service: "frontend"
+
+  # Service configuration
+  traefik_http_services_frontend_lb_port: "8080"
+
+# ============================================
+# Example 3: Lab Service with Custom Rule ID
+# ============================================
+# Using rule ID for path-based routing (e-skimming-labs pattern)
+
+labels:
+  traefik_enable: "true"
+
+  # Main lab route (uses rule ID mapping)
+  traefik_http_routers_lab1_rule_id: "lab1"  # Maps to PathPrefix(`/lab1`)
+  traefik_http_routers_lab1_priority: "300"
+  traefik_http_routers_lab1_entrypoints: "websecure"
+  traefik_http_routers_lab1_service: "lab1-service"
+
+  # Lab static files
+  traefik_http_routers_lab1_static_rule_id: "lab1-static"  # Maps to Path(`/lab1/static/{path:.*}`)
+  traefik_http_routers_lab1_static_priority: "400"
+  traefik_http_routers_lab1_static_entrypoints: "websecure"
+  traefik_http_routers_lab1_static_service: "lab1-service"
+
+  # Service configuration
+  traefik_http_services_lab1_service_lb_port: "3000"
+
+# ============================================
+# Example 4: Backend API with Middleware
+# ============================================
+# Service with custom middleware (CORS, rate limiting, etc.)
+
+labels:
+  traefik_enable: "true"
+
+  # Router with middleware
+  traefik_http_routers_api_rule: "Host(`api.example.com`) && PathPrefix(`/v1`)"
+  traefik_http_routers_api_priority: "200"
+  traefik_http_routers_api_entrypoints: "websecure"
+  traefik_http_routers_api_middlewares: "api-cors,api-ratelimit"
+  traefik_http_routers_api_service: "backend"
+
+  # Service configuration
+  traefik_http_services_backend_lb_port: "8080"
+
+# Note: Middleware must be defined in Traefik's static middleware configuration
+# or in the /etc/traefik/dynamic/middlewares.yml file
+
+# ============================================
+# Example 5: Subdomain Routing
+# ============================================
+# Multiple services on different subdomains
+
+labels:
+  traefik_enable: "true"
+
+  # Dashboard subdomain
+  traefik_http_routers_dashboard_rule: "Host(`dashboard.example.com`)"
+  traefik_http_routers_dashboard_entrypoints: "websecure"
+  traefik_http_routers_dashboard_service: "dashboard-svc"
+
+  # Service configuration
+  traefik_http_services_dashboard_svc_lb_port: "3000"
+
+# ============================================
+# Example 6: C2 Server (Private Service)
+# ============================================
+# Backend service only accessible internally
+
+labels:
+  traefik_enable: "true"
+
+  # C2 route (internal only)
+  traefik_http_routers_c2_rule_id: "lab1-c2"  # Maps to PathPrefix(`/lab1/c2`)
+  traefik_http_routers_c2_priority: "500"
+  traefik_http_routers_c2_entrypoints: "websecure"
+  traefik_http_routers_c2_service: "c2-server"
+
+  # Service configuration
+  traefik_http_services_c2_server_lb_port: "4000"
+
+# ============================================
+# Label Format Notes
+# ============================================
+#
+# GCP Label Restrictions:
+# - Keys must be lowercase letters, numbers, hyphens, underscores
+# - Values must be lowercase letters, numbers, hyphens, underscores
+# - No colons, dots, or other special characters
+#
+# Label Mapping:
+# - underscores in labels -> dots in Traefik config
+# - Example: traefik_http_routers_myapp_rule -> traefik.http.routers.myapp.rule
+#
+# Rule IDs (Custom Mapping):
+# - lab1          -> PathPrefix(`/lab1`)
+# - lab1-static   -> Path(`/lab1/static/{path:.*}`)
+# - lab1-c2       -> PathPrefix(`/lab1/c2`)
+# - home          -> PathPrefix(`/`)
+#
+# Priority Rules:
+# - Higher number = higher priority
+# - More specific routes need higher priority
+# - Typical range: 100-500
+#
+# Service Naming:
+# - traefik_http_services_{name}_lb_port defines the Cloud Run service port
+# - {name} should match the service reference in routers
+# - Port is usually 8080 for Go services, 3000 for Node.js
+
+# ============================================
+# Applying Labels
+# ============================================
+#
+# Via gcloud:
+# gcloud run services update SERVICE_NAME \
+#   --region=REGION \
+#   --update-labels="KEY1=VALUE1,KEY2=VALUE2,..."
+#
+# Via Terraform:
+# resource "google_cloud_run_service" "service" {
+#   metadata {
+#     labels = {
+#       traefik_enable                            = "true"
+#       traefik_http_routers_myapp_rule          = "Host(`app.example.com`)"
+#       traefik_http_services_myapp_lb_port      = "8080"
+#     }
+#   }
+# }
+#
+# Via YAML (gcloud run services replace):
+# metadata:
+#   labels:
+#     traefik_enable: "true"
+#     traefik_http_routers_myapp_rule: "Host(`app.example.com`)"
+#     traefik_http_services_myapp_lb_port: "8080"

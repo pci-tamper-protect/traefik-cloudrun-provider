@@ -1,0 +1,50 @@
+# docker-compose.test.yml - E2E testing with Traefik
+version: '3.8'
+
+services:
+  # Provider service - generates routes.yml
+  provider:
+    build:
+      context: .
+      dockerfile: Dockerfile.test
+    volumes:
+      - ./test-output:/output
+      # Mount ADC credentials for local testing
+      - ${HOME}/.config/gcloud:/home/cloudrunner/.config/gcloud:ro
+    environment:
+      - CLOUDRUN_PROVIDER_DEV_MODE=true
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=text
+      - ENVIRONMENT=stg
+      - LABS_PROJECT_ID=${LABS_PROJECT_ID:-labs-stg}
+      - HOME_PROJECT_ID=${HOME_PROJECT_ID:-labs-home-stg}
+      - REGION=${REGION:-us-central1}
+    command: ["/output/routes.yml"]
+    networks:
+      - traefik-test
+
+  # Traefik service - uses generated routes
+  traefik:
+    image: traefik:v2.10
+    command:
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --log.level=DEBUG
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+      - --entryPoints.web.address=:8080
+      - --entryPoints.websecure.address=:8443
+    ports:
+      - "8080:8080"   # Web entrypoint
+      - "8081:8081"   # Dashboard/API
+      - "8443:8443"   # Websecure entrypoint
+    volumes:
+      - ./test-output:/etc/traefik/dynamic:ro
+    networks:
+      - traefik-test
+    depends_on:
+      - provider
+
+networks:
+  traefik-test:
+    driver: bridge

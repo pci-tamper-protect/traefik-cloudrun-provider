@@ -1,0 +1,94 @@
+# docker-compose.e2e.yml - E2E testing with Traefik, Frontend, and Backend
+# Simulates Cloud Run architecture: public gateway, private services
+version: '3.8'
+
+services:
+  # Traefik - Public Gateway (like Cloud Run's public Traefik service)
+  traefik:
+    image: traefik:v2.10
+    command:
+      # API and Dashboard
+      - --api.dashboard=true
+      - --api.insecure=true
+
+      # Logging
+      - --log.level=DEBUG
+      - --accesslog=true
+
+      # Docker provider (instead of Cloud Run provider for local testing)
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      - --providers.docker.network=traefik-network
+
+      # Entrypoints
+      - --entryPoints.web.address=:80
+      - --entryPoints.websecure.address=:443
+    ports:
+      - "80:80"       # Web traffic
+      - "8081:8080"   # Dashboard/API
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+    networks:
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+  # Backend - Private service (only accessible through Traefik)
+  backend:
+    build:
+      context: ./tests/e2e/backend
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+    networks:
+      - traefik-network
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+
+      # HTTP Router for API
+      - "traefik.http.routers.backend.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.service=backend"
+
+      # Service
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
+
+      # Middlewares (simulate Cloud Run auth)
+      - "traefik.http.routers.backend.middlewares=backend-headers"
+      - "traefik.http.middlewares.backend-headers.headers.customrequestheaders.X-Forwarded-By=traefik"
+
+  # Frontend - Private service (only accessible through Traefik)
+  frontend:
+    build:
+      context: ./tests/e2e/frontend
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+      # Frontend calls backend directly (like Cloud Run service-to-service)
+      - BACKEND_URL=http://backend:8080
+    networks:
+      - traefik-network
+    depends_on:
+      - backend
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+
+      # HTTP Router
+      - "traefik.http.routers.frontend.rule=Host(`app.localhost`)"
+      - "traefik.http.routers.frontend.entrypoints=web"
+      - "traefik.http.routers.frontend.service=frontend"
+
+      # Service
+      - "traefik.http.services.frontend.loadbalancer.server.port=8080"
+
+      # Middlewares
+      - "traefik.http.routers.frontend.middlewares=frontend-headers"
+      - "traefik.http.middlewares.frontend-headers.headers.customrequestheaders.X-Forwarded-By=traefik"
+
+networks:
+  traefik-network:
+    driver: bridge
