@@ -1,4 +1,4 @@
-module github.com/kestenbroughton/traefik-cloudrun-provider
+module github.com/kbroughton/traefik-cloudrun-provider
 
 go 1.24.0
 
