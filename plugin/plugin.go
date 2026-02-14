@@ -31,7 +31,8 @@ type Config struct {
 func CreateConfig() *Config {
 	// Log that Traefik has discovered the plugin
 	// Note: Logger not available yet, so we use fmt for this critical step
-	fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ✅ SUCCESS: Plugin discovered by Traefik - CreateConfig() called\n")
+	// Include code for reliable parsing
+	fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s Plugin discovered by Traefik - CreateConfig() called\n", logging.CodeCreateConfigSuccess)
 
 	config := &Config{
 		ProjectIDs:   []string{},
@@ -39,7 +40,7 @@ func CreateConfig() *Config {
 		PollInterval: 30 * time.Second,
 	}
 
-	fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ✅ SUCCESS: CreateConfig() returning default configuration\n")
+	fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s CreateConfig() returning default configuration\n", logging.CodeCreateConfigSuccess)
 	return config
 }
 
@@ -58,7 +59,7 @@ func New(ctx context.Context, config *Config, name string) (*PluginProvider, err
 	fmt.Fprintf(os.Stderr, "[CloudRunPlugin] 🔧 INFO: New() called by Traefik\n")
 
 	if config == nil {
-		fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ❌ FAILURE: New() called with nil config\n")
+		fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s New() called with nil config\n", logging.CodeNewConfigNil)
 		return nil, fmt.Errorf("config cannot be nil")
 	}
 
@@ -66,18 +67,16 @@ func New(ctx context.Context, config *Config, name string) (*PluginProvider, err
 	if len(config.ProjectIDs) == 0 {
 		primaryProject := os.Getenv("LABS_PROJECT_ID")
 		if primaryProject == "" {
-			fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ❌ FAILURE: LABS_PROJECT_ID environment variable not set\n")
+			fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s LABS_PROJECT_ID environment variable not set\n", logging.CodeNewProjectIDMissing)
 			return nil, fmt.Errorf("at least one project ID must be specified (set LABS_PROJECT_ID or configure projectIDs)")
 		}
-		fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ✅ SUCCESS: LABS_PROJECT_ID found: %s\n", primaryProject)
+		fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s LABS_PROJECT_ID found: %s\n", logging.CodeNewProjectIDFound, primaryProject)
 		config.ProjectIDs = []string{primaryProject}
 
 		// Add secondary project if available
 		if secondaryProject := os.Getenv("HOME_PROJECT_ID"); secondaryProject != "" {
-			fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ✅ SUCCESS: HOME_PROJECT_ID found: %s\n", secondaryProject)
+			fmt.Fprintf(os.Stderr, "[CloudRunPlugin] code=%s HOME_PROJECT_ID found: %s\n", logging.CodeNewProjectIDFound, secondaryProject)
 			config.ProjectIDs = append(config.ProjectIDs, secondaryProject)
-		} else {
-			fmt.Fprintf(os.Stderr, "[CloudRunPlugin] ℹ️  INFO: HOME_PROJECT_ID not set (optional)\n")
 		}
 	}
 
@@ -110,7 +109,8 @@ func New(ctx context.Context, config *Config, name string) (*PluginProvider, err
 		Output: os.Stdout,
 	}).WithPrefix("CloudRunPlugin")
 
-	logger.Info("✅ Plugin instantiated by Traefik - New() called",
+	logger.Info("Plugin instantiated by Traefik - New() called",
+		logging.GetCodeField(logging.CodeNewSuccess),
 		logging.String("name", name),
 		logging.Any("projects", config.ProjectIDs),
 		logging.String("region", config.Region),
@@ -118,24 +118,30 @@ func New(ctx context.Context, config *Config, name string) (*PluginProvider, err
 	)
 
 	// Initialize Cloud Run client
-	logger.Info("🔧 Initializing Cloud Run API client...")
+	logger.Info("Initializing Cloud Run API client...")
 	runService, err := run.NewService(ctx)
 	if err != nil {
-		logger.Error("❌ FAILURE: Failed to create Cloud Run service", logging.Error(err))
+		logger.Error("Failed to create Cloud Run service",
+			logging.GetCodeField(logging.CodeNewCloudRunClientError),
+			logging.Error(err),
+		)
 		return nil, fmt.Errorf("failed to create Cloud Run service: %w", err)
 	}
 
-	logger.Info("✅ SUCCESS: Cloud Run API client initialized successfully")
+	logger.Info("Cloud Run API client initialized successfully",
+		logging.GetCodeField(logging.CodeNewSuccess),
+	)
 
-	logger.Info("🔧 Initializing token manager...")
+	logger.Info("Initializing token manager...")
 	tokenManager := gcp.NewTokenManager()
 	if tokenManager.IsDevMode() {
-		logger.Warn("⚠️  Running in development mode - will use ADC for tokens if metadata server unavailable")
+		logger.Warn("Running in development mode - will use ADC for tokens if metadata server unavailable")
 	} else {
-		logger.Info("✅ Token manager initialized (production mode - using metadata server)")
+		logger.Info("Token manager initialized (production mode - using metadata server)")
 	}
 
-	logger.Info("✅ SUCCESS: Plugin provider created successfully",
+	logger.Info("Plugin provider created successfully",
+		logging.GetCodeField(logging.CodeNewSuccess),
 		logging.String("name", name),
 		logging.Int("projectCount", len(config.ProjectIDs)),
 	)
@@ -149,44 +155,55 @@ func New(ctx context.Context, config *Config, name string) (*PluginProvider, err
 		stopChan:     make(chan struct{}),
 	}
 
-	logger.Info("✅ SUCCESS: New() completed successfully, returning plugin provider")
+	logger.Info("New() completed successfully, returning plugin provider",
+		logging.GetCodeField(logging.CodeNewSuccess),
+	)
 	return provider, nil
 }
 
 // Init initializes the provider
 // This is called by Traefik after New() to perform initialization
 func (p *PluginProvider) Init() error {
-	p.logger.Info("🔧 INFO: Init() called by Traefik",
+	p.logger.Info("Init() called by Traefik",
 		logging.String("name", p.name),
 	)
 
 	// Perform any initialization checks here
 	// Currently no-op, but we log success/failure explicitly
-	p.logger.Info("✅ SUCCESS: Init() completed successfully")
+	p.logger.Info("Init() completed successfully",
+		logging.GetCodeField(logging.CodeInitSuccess),
+	)
 	return nil
 }
 
 // Provide creates and sends dynamic configuration
 // This is called by Traefik to start the provider and begin generating configurations
 func (p *PluginProvider) Provide(cfgChan chan<- json.Marshaler) error {
-	p.logger.Info("🔧 INFO: Provide() called by Traefik",
+	p.logger.Info("Provide() called by Traefik",
 		logging.Duration("pollInterval", p.config.PollInterval),
 	)
 
 	// Generate initial configuration
-	p.logger.Info("🔧 INFO: Generating initial configuration...")
+	p.logger.Info("Generating initial configuration...")
 	if err := p.updateConfig(cfgChan); err != nil {
-		p.logger.Error("❌ FAILURE: Failed to generate initial config", logging.Error(err))
+		p.logger.Error("Failed to generate initial config",
+			logging.GetCodeField(logging.CodeProvideInitialConfigError),
+			logging.Error(err),
+		)
 		return fmt.Errorf("failed to generate initial config: %w", err)
 	}
 
-	p.logger.Info("✅ SUCCESS: Initial configuration generated and sent to Traefik successfully")
+	p.logger.Info("Initial configuration generated and sent to Traefik successfully",
+		logging.GetCodeField(logging.CodeProvideInitialConfigSuccess),
+	)
 
 	// Start polling loop
-	p.logger.Info("🔄 INFO: Starting polling loop for configuration updates...")
+	p.logger.Info("Starting polling loop for configuration updates...")
 	go p.pollLoop(cfgChan)
 
-	p.logger.Info("✅ SUCCESS: Provide() completed successfully, provider is now active")
+	p.logger.Info("Provide() completed successfully, provider is now active",
+		logging.GetCodeField(logging.CodeProvideSuccess),
+	)
 	return nil
 }
 
@@ -207,10 +224,22 @@ func (p *PluginProvider) pollLoop(cfgChan chan<- json.Marshaler) {
 		select {
 		case <-ticker.C:
 			pollCount++
-			p.logger.Debug("Polling for configuration updates", logging.Int("pollCount", pollCount))
+			p.logger.Info("Polling for configuration updates",
+				logging.GetCodeField(logging.CodePollStarted),
+				logging.Int("pollCount", pollCount),
+			)
 
 			if err := p.updateConfig(cfgChan); err != nil {
-				p.logger.Error("Failed to update configuration", logging.Error(err))
+				p.logger.Error("Failed to update configuration",
+					logging.GetCodeField(logging.CodePollError),
+					logging.Int("pollCount", pollCount),
+					logging.Error(err),
+				)
+			} else {
+				p.logger.Info("Configuration update completed successfully",
+					logging.GetCodeField(logging.CodePollSuccess),
+					logging.Int("pollCount", pollCount),
+				)
 			}
 		case <-p.stopChan:
 			p.logger.Debug("Stopping poll loop")
@@ -222,7 +251,10 @@ func (p *PluginProvider) pollLoop(cfgChan chan<- json.Marshaler) {
 // updateConfig discovers services and generates Traefik configuration
 func (p *PluginProvider) updateConfig(cfgChan chan<- json.Marshaler) error {
 	startTime := time.Now()
-	p.logger.Info("🔍 Starting configuration update cycle...")
+	p.logger.Info("Starting configuration update cycle...",
+		logging.GetCodeField(logging.CodeConfigGenerationStarted),
+		logging.String("timestamp", startTime.Format(time.RFC3339)),
+	)
 
 	// Create internal provider to reuse existing logic
 	p.logger.Debug("Creating internal provider instance...")
@@ -234,24 +266,36 @@ func (p *PluginProvider) updateConfig(cfgChan chan<- json.Marshaler) error {
 
 	internalProvider, err := provider.New(providerConfig)
 	if err != nil {
-		p.logger.Error("❌ Failed to create internal provider", logging.Error(err))
+		p.logger.Error("Failed to create internal provider",
+			logging.GetCodeField(logging.CodeInternalProviderError),
+			logging.Error(err),
+		)
 		return fmt.Errorf("failed to create internal provider: %w", err)
 	}
-	p.logger.Debug("✅ Internal provider created")
+	p.logger.Info("Internal provider created",
+		logging.GetCodeField(logging.CodeInternalProviderCreated),
+	)
 
 	// Generate configuration using internal provider
 	p.logger.Debug("Starting internal provider to discover services...")
 	internalConfigChan := make(chan *provider.DynamicConfig, 1)
 	if err := internalProvider.Start(internalConfigChan); err != nil {
-		p.logger.Error("❌ Failed to start internal provider", logging.Error(err))
+		p.logger.Error("Failed to start internal provider",
+			logging.GetCodeField(logging.CodeInternalProviderError),
+			logging.Error(err),
+		)
 		return fmt.Errorf("failed to start internal provider: %w", err)
 	}
-	p.logger.Debug("✅ Internal provider started, waiting for configuration...")
+	p.logger.Info("Internal provider started, waiting for configuration...",
+		logging.GetCodeField(logging.CodeInternalProviderStarted),
+	)
 
 	// Wait for configuration
 	select {
 	case internalConfig := <-internalConfigChan:
-		p.logger.Info("✅ SUCCESS: Configuration received from internal provider")
+		p.logger.Info("Configuration received from internal provider",
+			logging.GetCodeField(logging.CodeConfigGenerationSuccess),
+		)
 
 		// Convert to Traefik dynamic configuration
 		p.logger.Debug("Converting configuration to Traefik format...")
@@ -259,7 +303,8 @@ func (p *PluginProvider) updateConfig(cfgChan chan<- json.Marshaler) error {
 
 		duration := time.Since(startTime)
 		// Log stats from internal config since we can't access traefikConfig fields directly
-		p.logger.Info("✅ SUCCESS: Configuration generation complete",
+		p.logger.Info("Configuration generation complete",
+			logging.GetCodeField(logging.CodeConfigGenerationSuccess),
 			logging.Int("routers", len(internalConfig.HTTP.Routers)),
 			logging.Int("services", len(internalConfig.HTTP.Services)),
 			logging.Int("middlewares", len(internalConfig.HTTP.Middlewares)),
@@ -267,21 +312,27 @@ func (p *PluginProvider) updateConfig(cfgChan chan<- json.Marshaler) error {
 		)
 
 		// Send configuration to Traefik
-		p.logger.Info("📤 INFO: Sending configuration to Traefik...")
+		p.logger.Info("Sending configuration to Traefik...")
 		cfgChan <- traefikConfig
-		p.logger.Info("✅ SUCCESS: Configuration sent to Traefik successfully")
+		p.logger.Info("Configuration sent to Traefik successfully",
+			logging.GetCodeField(logging.CodeConfigSentSuccess),
+		)
 
 		// Stop internal provider
 		_ = internalProvider.Stop()
-		p.logger.Debug("✅ SUCCESS: Internal provider stopped")
+		p.logger.Debug("Internal provider stopped")
 
 	case <-time.After(60 * time.Second):
-		p.logger.Error("❌ FAILURE: Timeout waiting for configuration from internal provider (60s)")
+		p.logger.Error("Timeout waiting for configuration from internal provider (60s)",
+			logging.GetCodeField(logging.CodeConfigGenerationError),
+		)
 		_ = internalProvider.Stop()
 		return fmt.Errorf("timeout waiting for configuration")
 	}
 
-	p.logger.Info("✅ SUCCESS: updateConfig() completed successfully")
+	p.logger.Info("updateConfig() completed successfully",
+		logging.GetCodeField(logging.CodeConfigGenerationSuccess),
+	)
 	return nil
 }
 
@@ -338,11 +389,21 @@ func (p *PluginProvider) convertToTraefikConfig(src *provider.DynamicConfig) jso
 		logging.Int("count", len(src.HTTP.Middlewares)),
 	)
 	for name, middleware := range src.HTTP.Middlewares {
-		cfg.HTTP.Middlewares[name] = &dynamic.Middleware{
-			Headers: &dynamic.Headers{
+		traefikMw := &dynamic.Middleware{}
+
+		// Convert headers middleware (custom request headers)
+		// Note: Forwarded headers are configured at entrypoint level in Traefik, not as middleware
+		// The forwarded-headers middleware in routes.yml is for the file provider
+		if middleware.Headers != nil {
+			traefikMw.Headers = &dynamic.Headers{
 				CustomRequestHeaders: middleware.Headers.CustomRequestHeaders,
-			},
+			}
+			// Note: ForwardedHeaders in our config is for YAML serialization only
+			// Traefik's dynamic.Headers doesn't have a ForwardedHeaders field
+			// Forwarded headers should be configured at entrypoint level or via file provider
 		}
+
+		cfg.HTTP.Middlewares[name] = traefikMw
 
 		// Log auth middlewares specifically to help debug
 		if middleware.Headers != nil && len(middleware.Headers.CustomRequestHeaders) > 0 {
@@ -359,6 +420,15 @@ func (p *PluginProvider) convertToTraefikConfig(src *provider.DynamicConfig) jso
 					logging.Int("headerCount", len(middleware.Headers.CustomRequestHeaders)),
 				)
 			}
+		}
+
+		// Log forwarded headers middleware (if configured)
+		if middleware.Headers != nil && middleware.Headers.ForwardedHeaders != nil {
+			p.logger.Debug("✅ Forwarded headers middleware converted",
+				logging.String("name", name),
+				logging.String("insecure", fmt.Sprintf("%v", middleware.Headers.ForwardedHeaders.Insecure)),
+				logging.Int("trustedIPsCount", len(middleware.Headers.ForwardedHeaders.TrustedIPs)),
+			)
 		}
 	}
 

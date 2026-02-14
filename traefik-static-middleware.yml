@@ -1,0 +1,43 @@
+# Static middleware configuration for Traefik
+# These middlewares are referenced by the provider-generated routes
+
+http:
+  middlewares:
+    # Retry middleware for cold start handling
+    retry-cold-start:
+      retry:
+        attempts: 3
+        initialInterval: 500ms
+
+    # Strip prefix middlewares for various services
+    strip-lab1-prefix:
+      stripPrefix:
+        prefixes:
+          - "/lab1"
+
+    strip-lab1-c2-prefix:
+      stripPrefix:
+        prefixes:
+          - "/lab1/c2"
+
+    strip-lab2-prefix:
+      stripPrefix:
+        prefixes:
+          - "/lab2"
+
+    strip-seo-prefix:
+      stripPrefix:
+        prefixes:
+          - "/api/seo"
+
+    # Lab 2 auth check middleware (example)
+    lab2-auth-check:
+      headers:
+        customRequestHeaders:
+          X-Auth-Check: "true"
+
+    # Sign-in specific headers
+    signin-headers:
+      headers:
+        customRequestHeaders:
+          X-Sign-In-Flow: "true"

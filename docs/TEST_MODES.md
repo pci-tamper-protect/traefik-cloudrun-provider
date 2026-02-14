@@ -1,6 +1,6 @@
 # Understanding Test Modes
 
-This project has **two different test modes** that test different aspects of the system. Understanding the difference is crucial for debugging.
+This project has **multiple test modes** that test different aspects of the system. Understanding the difference is crucial for debugging.
 
 ## TL;DR
 
@@ -8,6 +8,96 @@ This project has **two different test modes** that test different aspects of the
 |------|---------------|----------|-------------|---------|
 | **E2E Test** | Traefik architecture | Docker | `X-Forwarded-By` | `./test-e2e.sh` |
 | **Provider Test** | Cloud Run provider | File | `X-Serverless-Authorization` | `./test-provider.sh` |
+| **Cloud Run Sim** | Full simulation with real tokens | File | `X-Serverless-Authorization` | `./test-cloudrun-sim.sh` |
+| **Plugin Local** | ⚠️ Yaegi plugin (fails) | Plugin | N/A | `./test-plugin-local.sh` |
+
+**Traefik Version:** All tests use `traefik:v2.10` for consistency.
+
+---
+
+## Traefik Plugin Architecture
+
+This provider can run in two modes:
+
+### Mode 1: Native Traefik Plugin (Yaegi)
+
+For Traefik >= 3.0, plugins use the [Yaegi](https://github.com/traefik/yaegi) Go interpreter. Key requirements:
+
+1. **Dependencies must be vendored** - Yaegi cannot resolve Go modules at runtime
+2. **Run `go mod vendor`** to create the `vendor/` directory
+3. **Include vendor in repository** - All dependencies must be committed
+
+```bash
+# Vendor dependencies
+go mod vendor
+
+# Verify vendor directory
+ls vendor/
+```
+
+See [Traefik Plugin Development Guide](https://doc.traefik.io/traefik-hub/api-gateway/guides/plugin-development-guide) and [Go Vendoring](https://go.dev/ref/mod#vendoring).
+
+**Plugin structure** (per [pluginproviderdemo](https://github.com/traefik/pluginproviderdemo)):
+```
+plugins-local/src/github.com/pci-tamper-protect/traefik-cloudrun-provider/
+├── plugin/plugin.go    # Exports: Config, CreateConfig(), New()
+├── go.mod
+├── go.sum
+├── vendor/             # All dependencies vendored
+│   ├── cloud.google.com/
+│   ├── google.golang.org/
+│   └── modules.txt
+└── .traefik.yml
+```
+
+**Verified Yaegi incompatibilities with GCP SDK** (see `go test -v ./plugin -run TestYaegi`):
+- ❌ **gRPC** - `grpclog.init()` causes nil pointer dereference in Yaegi
+- ❌ **GCP metadata** - Function signature mismatch: `func(*net.Dialer, string, string)` vs `func(string, string)`
+- ✅ `internal/logging` loads successfully (no GCP deps)
+
+### Mode 2: External Provider (Recommended) ⭐
+
+Run the provider as an **external binary** with Traefik's File provider:
+
+```
+┌─────────────────────────┐     ┌─────────────────────────┐
+│  traefik-cloudrun-      │     │      Traefik            │
+│  provider (binary)      │────▶│   (File Provider)       │
+│                         │     │                         │
+│  - Discovers Cloud Run  │     │  - Reads routes.yml     │
+│  - Fetches GCP tokens   │     │  - Routes traffic       │
+│  - Writes routes.yml    │     │  - Applies middlewares  │
+└─────────────────────────┘     └─────────────────────────┘
+```
+
+**Build the binary:**
+```bash
+go build -o traefik-cloudrun-provider ./cmd/provider
+```
+
+**Run modes:**
+```bash
+# One-shot mode (default) - generate once and exit
+LABS_PROJECT_ID=my-project ./traefik-cloudrun-provider
+
+# Daemon mode - continuous polling
+MODE=daemon POLL_INTERVAL=30s LABS_PROJECT_ID=my-project ./traefik-cloudrun-provider
+```
+
+**Environment variables:**
+| Variable | Default | Description |
+|----------|---------|-------------|
+| `LABS_PROJECT_ID` | (required) | Primary GCP project ID |
+| `HOME_PROJECT_ID` | (optional) | Secondary GCP project ID |
+| `REGION` | `us-central1` | GCP region |
+| `MODE` | `once` | `once` or `daemon` |
+| `POLL_INTERVAL` | `30s` | Polling interval for daemon mode |
+
+**Advantages:**
+- **Avoids Yaegi limitations** - Full Go runtime, no interpretation
+- **Simpler debugging** - Standard Go binary with logs
+- **Production-proven** - Used by `test-provider.sh` and `test-cloudrun-sim.sh`
+- **Daemon mode** - Continuous updates with graceful shutdown
 
 ---
 

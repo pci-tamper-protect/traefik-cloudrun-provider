@@ -1,0 +1,72 @@
+# docker-compose.cloudrun-sim.yml - Local Cloud Run simulation with full debugging
+# Simulates the production Cloud Run environment locally with real authentication
+version: '3.8'
+
+services:
+  # Traefik Gateway - simulates Cloud Run Traefik instance
+  traefik:
+    image: traefik:v2.10
+    container_name: traefik-cloudrun-sim
+    command:
+      # API/Dashboard for debugging
+      - --api.dashboard=true
+      - --api.insecure=true
+      - --log.level=DEBUG
+
+      # File provider for static middleware and provider-generated routes
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+
+      # Entrypoints
+      - --entryPoints.web.address=:80
+      - --entryPoints.websecure.address=:443
+
+      # Access logs for debugging
+      - --accesslog=true
+      - --accesslog.format=json
+    ports:
+      - "${TRAEFIK_WEB_PORT:-8090}:80"           # Web entrypoint
+      - "${TRAEFIK_API_PORT:-8091}:8080"         # Dashboard/API
+      - "${TRAEFIK_WEBSECURE_PORT:-8493}:443"    # Websecure entrypoint
+    volumes:
+      # Provider-generated routes and static middleware
+      - ./test-output:/etc/traefik/dynamic:ro
+    networks:
+      - cloudrun-sim
+    healthcheck:
+      test: ["CMD", "traefik", "healthcheck", "--ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 3
+
+  # Mock Cloud Run Service - simulates a backend service
+  mock-service:
+    build:
+      context: ./tests/mock-cloudrun-service
+      dockerfile: Dockerfile
+    container_name: mock-cloudrun-service
+    environment:
+      - SERVICE_NAME=mock-service
+      - PORT=8080
+    networks:
+      - cloudrun-sim
+    labels:
+      # This is what the service would have in Cloud Run
+      - "traefik.enable=true"
+      - "traefik.http.routers.mock-service.rule=PathPrefix(`/mock`)"
+      - "traefik.http.routers.mock-service.entrypoints=web"
+
+  # Header Inspector - debug service to see what headers Traefik sends
+  header-inspector:
+    build:
+      context: ./tests/header-inspector
+      dockerfile: Dockerfile
+    container_name: header-inspector
+    environment:
+      - PORT=8080
+    networks:
+      - cloudrun-sim
+
+networks:
+  cloudrun-sim:
+    driver: bridge

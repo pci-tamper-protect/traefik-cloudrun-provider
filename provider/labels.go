@@ -49,6 +49,45 @@ var ruleMap = map[string]string{
 	"lab3-extension":     "PathPrefix(`/lab3/extension`)",
 }
 
+// defaultPriorityMap maps router names to default priorities
+// Higher priority = matched first. home-index has lowest priority (catch-all)
+// Priority guide:
+//   - 1: catch-all routes (home-index root "/")
+//   - 100: sign-in/sign-up routes
+//   - 200: main lab routes (/lab1, /lab2, /lab3)
+//   - 250: static asset routes (/lab1/css/, etc.)
+//   - 300: sub-routes (/lab1/c2, /lab3/extension)
+//   - 500: API routes (/api/seo, /api/analytics)
+//   - 1000: internal routes (dashboard, api)
+var defaultPriorityMap = map[string]int{
+	"home-index":        1,   // Lowest priority - catch-all for "/"
+	"home-index-root":   1,   // Lowest priority - catch-all for "/"
+	"home-index-signin": 100, // Sign-in pages
+	"home-seo":          500, // API routes
+	"labs-analytics":    500, // API routes
+	"lab1":              200, // Main lab routes
+	"lab1-static":       250, // Static assets (more specific)
+	"lab1-c2":           300, // Sub-routes (most specific)
+	"lab2":              200,
+	"lab2-main":         200,
+	"lab2-static":       250,
+	"lab2-c2":           300,
+	"lab3":              200,
+	"lab3-main":         200,
+	"lab3-static":       250,
+	"lab3-extension":    300,
+}
+
+// getDefaultPriority returns the default priority for a router name
+// Falls back to 200 for unknown routers (reasonable default for app routes)
+func getDefaultPriority(routerName string) int {
+	if priority, ok := defaultPriorityMap[routerName]; ok {
+		return priority
+	}
+	// Default to 200 for unknown routes (higher than home-index catch-all)
+	return 200
+}
+
 // extractRouterConfigs extracts router configurations from Cloud Run service labels
 // Extracted from cmd/generate-routes/main.go:410-507
 func extractRouterConfigs(labels map[string]string, serviceName string) map[string]RouterConfig {
@@ -71,7 +110,7 @@ func extractRouterConfigs(labels map[string]string, serviceName string) map[stri
 
 		if routers[routerName].Rule == "" {
 			routers[routerName] = RouterConfig{
-				Priority:    1,
+				Priority:    getDefaultPriority(routerName), // Use smart default based on router name
 				EntryPoints: []string{"web"}, // Always set entryPoints (plural) - required by Traefik
 				Middlewares: []string{},
 			}

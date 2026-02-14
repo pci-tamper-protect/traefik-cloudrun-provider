@@ -37,18 +37,36 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 		if resp.Items != nil {
 			for _, svc := range resp.Items {
 				// Check if service has traefik_enable=true label
-				if svc.Spec != nil && svc.Spec.Template != nil && svc.Spec.Template.Metadata != nil {
+				// Check both service-level labels (set by --labels) and template metadata labels
+				var labels map[string]string
+				var hasTraefikEnable bool
+				
+				// First check service-level labels (metadata.labels) - set by gcloud run deploy --labels
+				if svc.Metadata != nil && svc.Metadata.Labels != nil {
+					if enabled, ok := svc.Metadata.Labels["traefik_enable"]; ok && enabled == "true" {
+						hasTraefikEnable = true
+						labels = svc.Metadata.Labels
+					}
+				}
+				
+				// Fall back to template metadata labels if not found in service-level labels
+				if !hasTraefikEnable && svc.Spec != nil && svc.Spec.Template != nil && svc.Spec.Template.Metadata != nil {
 					if svc.Spec.Template.Metadata.Labels != nil {
 						if enabled, ok := svc.Spec.Template.Metadata.Labels["traefik_enable"]; ok && enabled == "true" {
-							services = append(services, CloudRunService{
-								Name:      svc.Metadata.Name,
-								URL:       svc.Status.Url,
-								ProjectID: projectID,
-								Region:    region,
-								Labels:    svc.Spec.Template.Metadata.Labels,
-							})
+							hasTraefikEnable = true
+							labels = svc.Spec.Template.Metadata.Labels
 						}
 					}
+				}
+				
+				if hasTraefikEnable && labels != nil {
+					services = append(services, CloudRunService{
+						Name:      svc.Metadata.Name,
+						URL:       svc.Status.Url,
+						ProjectID: projectID,
+						Region:    region,
+						Labels:    labels,
+					})
 				}
 			}
 		}

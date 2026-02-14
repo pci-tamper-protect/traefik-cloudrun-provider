@@ -1,0 +1,46 @@
+# Provider Sidecar Dockerfile for Cloud Run
+# This container runs the traefik-cloudrun-provider binary
+# It generates routes.yml into a shared volume that the main Traefik container reads
+
+FROM golang:latest AS builder
+
+WORKDIR /app
+
+# Copy go mod files
+COPY go.mod go.sum ./
+RUN go mod download
+
+# Copy source code
+COPY . .
+
+# Build provider (static binary for Alpine)
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/traefik-cloudrun-provider ./cmd/provider
+
+# Runtime image
+FROM alpine:3.18
+
+WORKDIR /app
+
+# Install CA certificates for HTTPS
+RUN apk add --no-cache ca-certificates
+
+# Copy binary from builder
+COPY --from=builder /app/bin/traefik-cloudrun-provider /usr/local/bin/traefik-cloudrun-provider
+
+# Create shared volume mount point
+# The provider writes routes.yml to /shared/traefik/dynamic/routes.yml
+RUN mkdir -p /shared/traefik/dynamic && \
+    chmod 755 /shared/traefik/dynamic
+
+# Create non-root user (Cloud Run best practice)
+RUN adduser -D -u 1000 cloudrunner && \
+    chown -R cloudrunner:cloudrunner /shared && \
+    echo "✅ cloudrunner user created"
+
+USER cloudrunner
+
+# Default command: run in daemon mode, generating routes.yml to shared volume
+# Mode is controlled by MODE env var (default: daemon)
+# Output file is passed as command argument
+ENTRYPOINT ["traefik-cloudrun-provider"]
+CMD ["/shared/traefik/dynamic/routes.yml"]

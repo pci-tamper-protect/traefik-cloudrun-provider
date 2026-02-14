@@ -1,6 +1,6 @@
-# Traefik Plugin Manifest
-# Note: This provider is currently a standalone binary, not a native Traefik plugin.
-# This manifest is for future plugin conversion.
+# Traefik Plugin Manifest for v3.0 Local Plugins
+# This manifest is REQUIRED for Traefik v3.0 local plugin mode
+# The plugin is used in e-skimming-labs with Traefik v3.0
 
 displayName: Cloud Run Provider
 type: provider

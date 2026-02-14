@@ -17,14 +17,20 @@ fi
 
 # Impersonate service account if configured
 if [ -n "$IMPERSONATE_SERVICE_ACCOUNT" ]; then
-    echo -e "${YELLOW}Setting up service account impersonation...${NC}"
-    echo "  Impersonating: $IMPERSONATE_SERVICE_ACCOUNT"
+    echo -e "${YELLOW}Checking service account impersonation...${NC}"
+    echo "  Target service account: $IMPERSONATE_SERVICE_ACCOUNT"
 
-    if gcloud auth application-default login \
-        --impersonate-service-account="$IMPERSONATE_SERVICE_ACCOUNT" 2>&1 | grep -q "Credentials saved"; then
-        echo -e "${GREEN}✓ Successfully set up impersonation${NC}"
+    # Check if impersonation is already configured
+    CURRENT_IMPERSONATE=$(gcloud config get-value auth/impersonate_service_account 2>/dev/null || echo "")
+
+    if [ "$CURRENT_IMPERSONATE" = "$IMPERSONATE_SERVICE_ACCOUNT" ]; then
+        echo -e "${GREEN}✓ Impersonation already configured${NC}"
     else
-        echo -e "${YELLOW}⚠ Impersonation may already be configured${NC}"
+        echo -e "${YELLOW}Configuring impersonation (no OAuth required)...${NC}"
+        # Use gcloud config instead of auth login to avoid OAuth flow
+        gcloud config set auth/impersonate_service_account "$IMPERSONATE_SERVICE_ACCOUNT" --quiet
+        echo -e "${GREEN}✓ Impersonation configured${NC}"
+        echo -e "${YELLOW}Note: Make sure you have 'Service Account Token Creator' role on this SA${NC}"
     fi
     echo ""
 fi
@@ -53,6 +59,9 @@ cleanup() {
 
 trap cleanup EXIT
 
+# Clean up any existing containers before starting
+docker-compose -f docker-compose.provider.yml down -v 2>/dev/null || true
+
 # Create output directory
 mkdir -p test-output
 
@@ -78,21 +87,22 @@ if [ -f test-output/routes.yml ]; then
     echo -e "${GREEN}✓ Routes file generated successfully${NC}"
     echo -e "\n${YELLOW}Generated routes summary:${NC}"
 
-    # Count routers, services, and middlewares in YAML (match indented keys)
-    ROUTER_COUNT=$(grep -E '^\s+[a-zA-Z0-9_-]+:$' test-output/routes.yml | sed -n '/routers:/,/services:/p' | grep -c ':$' || echo 0)
-    SERVICE_COUNT=$(grep -E '^\s+[a-zA-Z0-9_-]+:$' test-output/routes.yml | sed -n '/services:/,/middlewares:/p' | grep -c ':$' || echo 0)
-    MIDDLEWARE_COUNT=$(grep -E '^\s+[a-zA-Z0-9_-]+:$' test-output/routes.yml | sed -n '/middlewares:/,$p' | grep -c ':$' || echo 0)
+    # Count routers, services, and middlewares using yq (preferred) or grep fallback
+    if command -v yq &> /dev/null; then
+        ROUTER_COUNT=$(yq eval '.http.routers | length // 0' test-output/routes.yml 2>/dev/null | tr -d '\n' || echo "0")
+        SERVICE_COUNT=$(yq eval '.http.services | length // 0' test-output/routes.yml 2>/dev/null | tr -d '\n' || echo "0")
+        MIDDLEWARE_COUNT=$(yq eval '.http.middlewares | length // 0' test-output/routes.yml 2>/dev/null | tr -d '\n' || echo "0")
+    else
+        # Fallback: count with grep (less accurate)
+        ROUTER_COUNT=$(grep -c '^\s\s[a-zA-Z].*:$' test-output/routes.yml 2>/dev/null | head -1 || echo "0")
+        SERVICE_COUNT="unknown"
+        MIDDLEWARE_COUNT="unknown"
+    fi
 
-    # Fallback: just count sections if above fails
-    if [ "$ROUTER_COUNT" -eq 0 ]; then
-        ROUTER_COUNT=$(yq eval '.http.routers | length' test-output/routes.yml 2>/dev/null || echo "unknown")
-    fi
-    if [ "$SERVICE_COUNT" -eq 0 ]; then
-        SERVICE_COUNT=$(yq eval '.http.services | length' test-output/routes.yml 2>/dev/null || echo "unknown")
-    fi
-    if [ "$MIDDLEWARE_COUNT" -eq 0 ]; then
-        MIDDLEWARE_COUNT=$(yq eval '.http.middlewares | length' test-output/routes.yml 2>/dev/null || echo "unknown")
-    fi
+    # Ensure we have valid integers for display
+    ROUTER_COUNT=${ROUTER_COUNT:-0}
+    SERVICE_COUNT=${SERVICE_COUNT:-0}
+    MIDDLEWARE_COUNT=${MIDDLEWARE_COUNT:-0}
 
     echo "  Routers: $ROUTER_COUNT"
     echo "  Services: $SERVICE_COUNT"
@@ -160,8 +170,13 @@ echo -e "\n${GREEN}========================================${NC}"
 echo -e "${GREEN}All tests passed! 🎉${NC}"
 echo -e "${GREEN}========================================${NC}"
 echo ""
-echo "Traefik dashboard available at: http://localhost:${TRAEFIK_API_PORT}/dashboard/"
-echo "Press Ctrl+C to stop services and exit"
+echo "Traefik dashboard: http://localhost:${TRAEFIK_API_PORT}/dashboard/"
+echo ""
+echo "To keep services running and view logs:"
+echo "  docker-compose -f docker-compose.provider.yml logs -f"
+echo ""
+echo "To stop services manually:"
+echo "  docker-compose -f docker-compose.provider.yml down"
+echo ""
 
-# Keep running until interrupted
-docker-compose -f docker-compose.provider.yml logs -f
+# Cleanup will happen automatically via trap on exit

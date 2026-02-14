@@ -1,0 +1,44 @@
+# Dockerfile.plugin-local - Traefik with local plugin mode for E2E testing
+#
+# TRAEFIK PLUGIN REQUIREMENTS (Yaegi):
+# ====================================
+# 1. Dependencies MUST be vendored (run: go mod vendor)
+# 2. Vendor directory must be included in the plugin source
+# 3. See: https://doc.traefik.io/traefik-hub/api-gateway/guides/plugin-development-guide
+#
+# POTENTIAL ISSUES WITH GCP SDK:
+# - Complex reflection patterns may not work with Yaegi
+# - Some packages use unsafe (may need useUnsafe: true in .traefik.yml)
+# - gRPC/protobuf complexity may cause runtime issues
+#
+# ALTERNATIVE: Run provider as external binary with File provider
+# See: test-provider.sh, test-cloudrun-sim.sh
+
+FROM traefik:v2.10
+
+# Install curl, bash, jq for health checks and debugging
+USER root
+RUN apk add --no-cache curl ca-certificates bash jq && \
+    echo "✅ Utilities installed"
+
+# Copy plugin source code for local plugin mode
+# Plugin must be in ./plugins-local/src/github.com/pci-tamper-protect/traefik-cloudrun-provider
+COPY . /plugins-local/src/github.com/pci-tamper-protect/traefik-cloudrun-provider/
+
+# Ensure plugin directory is readable
+RUN chmod -R a+rX /plugins-local && \
+    echo "✅ Plugin directory permissions set"
+
+# Create dynamic config directory for static middlewares
+RUN mkdir -p /etc/traefik/dynamic && \
+    echo "✅ Dynamic config directory created"
+
+# Expose ports
+EXPOSE 80 443 8080
+
+# Health check
+HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
+    CMD wget -q --spider http://localhost:8080/ping || exit 1
+
+# Use Traefik's default entrypoint
+CMD ["traefik"]
