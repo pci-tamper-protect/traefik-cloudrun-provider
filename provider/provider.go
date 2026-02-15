@@ -532,7 +532,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 // The middlewares must be pre-defined in the static routes.yml file.
 func getStripPrefixMiddleware(routerName, rule string) string {
 	// Map of router name patterns to their strip-prefix middleware
-	// These middlewares are defined in deploy/traefik/dynamic/routes.yml
+	// These middlewares are defined in e-skimming-labs/deploy/traefik/dynamic/routes.yml
 	stripPrefixMap := map[string]string{
 		// Lab 1 routes
 		"lab1":        "strip-lab1-prefix@file",
