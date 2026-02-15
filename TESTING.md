@@ -491,3 +491,246 @@ export LOG_FORMAT=text  # Easier to read during debugging
 **Empty routes.yml**
 - No services found with traefik_enable=true
 - Check project IDs and region are correct
+
+---
+
+## Cloud Run Simulation Testing (⭐ Recommended for Debugging)
+
+### Overview
+
+The Cloud Run simulation (`test-cloudrun-sim.sh`) provides a full local replica of your production environment with real authentication and complete instrumentation.
+
+### What It Does
+
+1. **Generates real configuration** from your GCP Cloud Run services
+2. **Fetches real identity tokens** using traefik-stg service account
+3. **Runs Traefik locally** with the generated routes
+4. **Provides mock services** for testing authentication
+5. **Enables full debugging** with access logs and instrumentation
+
+### Usage
+
+```bash
+./test-cloudrun-sim.sh
+```
+
+### Architecture
+
+```
+┌─────────────────────────────────────────────────┐
+│  Your Machine (Local)                           │
+│                                                  │
+│  ┌───────────────────────────────────────────┐ │
+│  │ Traefik Gateway (Port 8090/8091)          │ │
+│  │ • Loads routes.yml (real services)        │ │
+│  │ • Adds X-Serverless-Authorization headers │ │
+│  │ • Routes to Cloud Run services            │ │
+│  └───────────────────────────────────────────┘ │
+│                 ↓                                │
+│  ┌───────────────────────────────────────────┐ │
+│  │ Mock Services (for testing)               │ │
+│  │ • Header Inspector: Shows all headers    │ │
+│  │ • Mock Cloud Run Service: Validates auth │ │
+│  └───────────────────────────────────────────┘ │
+│                                                  │
+│  Routes point to real Cloud Run services ────── ┼ ──→ GCP
+│  (with real identity tokens)                    │
+└─────────────────────────────────────────────────┘
+```
+
+### Debug Endpoints
+
+Once running, you have access to:
+
+- **Traefik Dashboard:** http://localhost:8091/dashboard/
+- **API Endpoints:** http://localhost:8091/api/http/routers
+- **Real Service Test:** `curl -v http://localhost:8090/lab1`
+- **Header Inspector:** `docker exec header-inspector wget -qO- http://localhost:8080/`
+
+### Debugging Authentication
+
+#### 1. Check Token Generation
+
+```bash
+# View generated tokens (sanitized in routes.yml)
+grep "X-Serverless-Authorization" test-output/routes.yml | head -5
+```
+
+#### 2. Verify Headers Reach Backend
+
+```bash
+# Direct test of header inspector
+docker exec header-inspector wget -qO- http://localhost:8080/ | jq .
+
+# Should show:
+# {
+#   "auth_headers": {
+#     "x_serverless_authorization": "Bearer eyJ..."
+#   }
+# }
+```
+
+#### 3. Test Real Service Routing
+
+```bash
+# This should work because Traefik adds the identity token
+curl -v http://localhost:8090/lab1
+
+# Should return 200 OK from the real Cloud Run service
+```
+
+#### 4. View Traefik's Perspective
+
+```bash
+# See all middlewares (including auth)
+curl http://localhost:8091/api/http/middlewares | jq .
+
+# See all routers
+curl http://localhost:8091/api/http/routers | jq .
+
+# See all services
+curl http://localhost:8091/api/http/services | jq .
+```
+
+### Mock Services
+
+#### Header Inspector
+
+Shows all headers received by the backend:
+
+```bash
+docker exec header-inspector wget -qO- http://localhost:8080/
+```
+
+**Output:**
+```json
+{
+  "timestamp": "2026-01-12T03:30:00Z",
+  "method": "GET",
+  "path": "/",
+  "headers": {
+    "X-Serverless-Authorization": ["Bearer eyJ..."],
+    "X-Forwarded-For": ["172.18.0.1"],
+    "X-Forwarded-Host": ["localhost:8090"],
+    ...
+  },
+  "auth_headers": {
+    "x_serverless_authorization": "Bearer eyJhbG...ndg",
+    "x_forwarded_for": "172.18.0.1",
+    "x_forwarded_host": "localhost:8090"
+  }
+}
+```
+
+#### Mock Cloud Run Service
+
+Simulates a Cloud Run service with authentication validation:
+
+```bash
+# Test authentication (should pass via Traefik)
+curl http://localhost:8090/mock
+
+# Test without auth (should fail)
+docker exec mock-cloudrun-service wget -qO- http://localhost:8080/
+```
+
+**Authenticated Response:**
+```json
+{
+  "message": "Hello from mock-cloudrun-service",
+  "service": "mock-cloudrun-service",
+  "timestamp": "2026-01-12T03:30:00Z",
+  "auth": {
+    "authenticated": true,
+    "method": "X-Serverless-Authorization",
+    "token_preview": "eyJhbGciOiJSUzI1...m8ndg"
+  }
+}
+```
+
+**Unauthenticated Response (401):**
+```json
+{
+  "message": "Hello from mock-cloudrun-service",
+  "service": "mock-cloudrun-service",
+  "timestamp": "2026-01-12T03:30:00Z",
+  "auth": {
+    "authenticated": false,
+    "error": "No authentication header present"
+  }
+}
+```
+
+### Troubleshooting
+
+#### "Routes not loaded in Traefik"
+
+```bash
+# 1. Check routes.yml was generated
+cat test-output/routes.yml
+
+# 2. Check Traefik logs
+docker-compose -f docker-compose.cloudrun-sim.yml logs traefik
+
+# 3. Look for "Configuration reload detected"
+```
+
+#### "No X-Serverless-Authorization header"
+
+```bash
+# 1. Check middleware was created
+curl http://localhost:8091/api/http/middlewares | jq '.[] | select(.name | contains("auth"))'
+
+# 2. Check router is using middleware
+curl http://localhost:8091/api/http/routers | jq '.[] | {name, middlewares}'
+
+# 3. Verify token in routes.yml
+grep -A 3 "lab1-auth:" test-output/routes.yml
+```
+
+#### "Service account impersonation failed"
+
+```bash
+# Check current impersonation
+gcloud config get-value auth/impersonate_service_account
+
+# Set it manually
+gcloud config set auth/impersonate_service_account traefik-stg@labs-stg.iam.gserviceaccount.com
+
+# Verify IAM permissions
+gcloud projects get-iam-policy labs-stg \
+  --flatten="bindings[].members" \
+  --filter="bindings.role:roles/iam.serviceAccountTokenCreator"
+```
+
+### Development Workflow
+
+Typical debugging workflow:
+
+```bash
+# 1. Start simulation
+./test-cloudrun-sim.sh
+
+# 2. In another terminal, test your route
+curl -v http://localhost:8090/your-route
+
+# 3. Check headers
+docker exec header-inspector wget -qO- http://localhost:8080/ | jq .
+
+# 4. View logs
+docker-compose -f docker-compose.cloudrun-sim.yml logs -f traefik
+
+# 5. Make code changes
+# Edit provider code...
+
+# 6. Rebuild and retest
+docker build -f Dockerfile.provider -t traefik-cloudrun-provider:test .
+./test-cloudrun-sim.sh
+```
+
+### Stopping the Simulation
+
+```bash
+# Ctrl+C in the running terminal, or:
+docker-compose -f docker-compose.cloudrun-sim.yml down
+```

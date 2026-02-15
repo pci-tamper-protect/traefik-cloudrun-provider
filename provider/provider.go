@@ -153,21 +153,27 @@ func (p *Provider) pollLoop(configChan chan<- *DynamicConfig) {
 // updateConfig discovers services and generates Traefik configuration
 func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	startTime := time.Now()
-	p.logger.Info("🔍 Starting service discovery...")
+	p.logger.Info("Starting service discovery...",
+		logging.GetCodeField(logging.CodeServiceDiscoveryStarted),
+	)
 	config := NewDynamicConfig()
 
 	totalServices := 0
+	
+	// Track home-index URL for user auth middleware generation
+	var homeIndexURL string
 
 	// Discover services from all configured projects
 	for _, projectID := range p.config.ProjectIDs {
-		p.logger.Info("🔍 Listing Cloud Run services in project",
+		p.logger.Info("Listing Cloud Run services in project",
 			logging.String("project", projectID),
 			logging.String("region", p.config.Region),
 		)
 
 		services, err := p.listServices(p.runService, projectID, p.config.Region)
 		if err != nil {
-			p.logger.Error("❌ Failed to list services in project",
+			p.logger.Error("Failed to list services in project",
+				logging.GetCodeField(logging.CodeServiceDiscoveryError),
 				logging.String("project", projectID),
 				logging.Error(err),
 			)
@@ -175,7 +181,8 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 		}
 
 		totalServices += len(services)
-		p.logger.Info("✅ Discovered services",
+		p.logger.Info("Discovered services",
+			logging.GetCodeField(logging.CodeServiceDiscoverySuccess),
 			logging.String("project", projectID),
 			logging.Int("count", len(services)),
 		)
@@ -186,35 +193,49 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 			// Check if service has traefik_enable=true label
 			if enabled, ok := service.Labels["traefik_enable"]; ok && enabled == "true" {
 				traefikEnabledCount++
-				p.logger.Info("🔧 Processing Traefik-enabled service",
+				p.logger.Info("Processing Traefik-enabled service",
+					logging.GetCodeField(logging.CodeServiceProcessingStarted),
 					logging.String("service", service.Name),
 					logging.String("project", projectID),
 				)
 				if err := p.processService(service, config); err != nil {
-					p.logger.Error("❌ Failed to process service",
+					p.logger.Error("Failed to process service",
+						logging.GetCodeField(logging.CodeServiceProcessingError),
 						logging.String("service", service.Name),
 						logging.String("project", projectID),
 						logging.Error(err),
 					)
 					continue
 				}
-				p.logger.Info("✅ Service processed successfully",
+				p.logger.Info("Service processed successfully",
+					logging.GetCodeField(logging.CodeServiceProcessingSuccess),
 					logging.String("service", service.Name),
 				)
+				
+				// Track home-index URL for user auth middleware
+				if strings.Contains(service.Name, "home-index") && service.URL != "" {
+					homeIndexURL = service.URL
+					p.logger.Info("Found home-index service for user auth",
+						logging.String("url", homeIndexURL),
+					)
+				}
 			} else {
-				p.logger.Debug("⏭️  Skipping service (traefik_enable != true)",
+				p.logger.Debug("Skipping service (traefik_enable != true)",
+					logging.GetCodeField(logging.CodeServiceSkipped),
 					logging.String("service", service.Name),
 				)
 			}
 		}
 		
 		if traefikEnabledCount == 0 {
-			p.logger.Warn("⚠️  No Traefik-enabled services found in project",
+			p.logger.Warn("No Traefik-enabled services found in project",
+				logging.GetCodeField(logging.CodeServiceDiscoveryNoServices),
 				logging.String("project", projectID),
 				logging.Int("totalServices", len(services)),
 			)
 		} else {
-			p.logger.Info("✅ Processed Traefik-enabled services",
+			p.logger.Info("Processed Traefik-enabled services",
+				logging.GetCodeField(logging.CodeServiceDiscoverySuccess),
 				logging.String("project", projectID),
 				logging.Int("enabledCount", traefikEnabledCount),
 				logging.Int("totalServices", len(services)),
@@ -222,12 +243,35 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 		}
 	}
 
+	// Note: Common middlewares like forwarded-headers are defined in routes.yml
+	// and loaded via the file provider, since dynamic.Headers doesn't support
+	// forwarded headers configuration. The file provider is still enabled for
+	// static middlewares like retry-cold-start@file and forwarded-headers@file.
+
+	// Generate user auth middlewares if USER_AUTH_ENABLED is true
+	// These forwardAuth middlewares call home-index /api/auth/check for JWT validation
+	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == "true"
+	if userAuthEnabled && homeIndexURL != "" {
+		p.logger.Info("USER_AUTH_ENABLED=true, generating forwardAuth middlewares",
+			logging.String("homeIndexURL", homeIndexURL),
+		)
+		// Generate lab auth-check middlewares that point to the Cloud Run home-index URL
+		config.AddForwardAuthMiddleware("lab1-auth-check", homeIndexURL)
+		config.AddForwardAuthMiddleware("lab2-auth-check", homeIndexURL)
+		config.AddForwardAuthMiddleware("lab3-auth-check", homeIndexURL)
+	} else if userAuthEnabled && homeIndexURL == "" {
+		p.logger.Warn("USER_AUTH_ENABLED=true but home-index URL not found - user auth middlewares not generated")
+	} else {
+		p.logger.Info("USER_AUTH_ENABLED not set or false - skipping user auth middlewares")
+	}
+
 	// Add Traefik API/Dashboard routers
 	p.logger.Debug("Adding Traefik internal routers (API/Dashboard)...")
 	config.AddTraefikInternalRouters()
 
 	duration := time.Since(startTime)
-	p.logger.Info("✅ Configuration generation complete",
+	p.logger.Info("Configuration generation complete",
+		logging.GetCodeField(logging.CodeConfigGenerationSuccess),
 		logging.Int("totalServices", totalServices),
 		logging.Int("routers", len(config.HTTP.Routers)),
 		logging.Int("services", len(config.HTTP.Services)),
@@ -236,16 +280,19 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	)
 
 	// Send configuration to Traefik
-	p.logger.Info("📤 Sending configuration to channel...")
+	p.logger.Info("Sending configuration to channel...")
 	configChan <- config
-	p.logger.Info("✅ Configuration sent successfully")
+	p.logger.Info("Configuration sent successfully",
+		logging.GetCodeField(logging.CodeConfigSentSuccess),
+	)
 
 	return nil
 }
 
 // processService processes a single Cloud Run service and adds it to the configuration
 func (p *Provider) processService(service CloudRunService, config *DynamicConfig) error {
-	p.logger.Info("🔧 Processing service",
+	p.logger.Info("Processing service",
+		logging.GetCodeField(logging.CodeServiceProcessingStarted),
 		logging.String("name", service.Name),
 		logging.String("project", service.ProjectID),
 		logging.String("url", service.URL),
@@ -255,13 +302,14 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	p.logger.Debug("Extracting router configurations from labels...")
 	routerConfigs := extractRouterConfigs(service.Labels, service.Name)
 	if len(routerConfigs) == 0 {
-		p.logger.Warn("⚠️  No router labels found for service",
+		p.logger.Warn("No router labels found for service",
+			logging.GetCodeField(logging.CodeServiceProcessingError),
 			logging.String("service", service.Name),
 		)
 		return fmt.Errorf("no router labels found")
 	}
 
-	p.logger.Info("✅ Extracted router configurations",
+	p.logger.Info("Extracted router configurations",
 		logging.String("service", service.Name),
 		logging.Int("routerCount", len(routerConfigs)),
 	)
@@ -274,6 +322,17 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 			break
 		}
 	}
+	
+	// Set service name on routers that don't have it explicitly set
+	// This ensures all routers point to the correct service
+	// Note: Cannot directly assign to struct field in map - must get, modify, and put back
+	for routerName := range routerConfigs {
+		if routerConfigs[routerName].Service == "" {
+			routerConfig := routerConfigs[routerName]
+			routerConfig.Service = serviceNameFromLabel
+			routerConfigs[routerName] = routerConfig
+		}
+	}
 
 	// Get identity token for service
 	// This token will be used in Authorization header for Cloud Run service-to-service auth
@@ -284,7 +343,8 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	
 	serviceToken, err := p.tokenManager.GetToken(service.URL)
 	if err != nil {
-		p.logger.Error("❌ Failed to fetch identity token for service",
+		p.logger.Error("Failed to fetch identity token for service",
+			logging.GetCodeField(logging.CodeTokenFetchError),
 			logging.String("service", service.Name),
 			logging.String("url", service.URL),
 			logging.Error(err),
@@ -309,14 +369,16 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 			if len(serviceToken) < previewLen {
 				previewLen = len(serviceToken)
 			}
-			p.logger.Error("❌ Token doesn't look valid (should start with eyJ for JWT)",
+			p.logger.Error("Token doesn't look valid (should start with eyJ for JWT)",
+				logging.GetCodeField(logging.CodeTokenInvalid),
 				logging.String("service", service.Name),
 				logging.String("tokenPreview", serviceToken[:previewLen]),
 				logging.Int("tokenLength", len(serviceToken)),
 			)
 			serviceToken = ""
 		} else {
-			p.logger.Info("✅ Successfully fetched identity token for service",
+			p.logger.Info("Successfully fetched identity token for service",
+				logging.GetCodeField(logging.CodeTokenFetchSuccess),
 				logging.String("service", service.Name),
 				logging.String("url", service.URL),
 				logging.Int("tokenLength", len(serviceToken)),
@@ -324,27 +386,82 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 		}
 	}
 
-	// Create auth middleware
+	// Create auth middleware (only if token is available)
 	authMiddlewareName := fmt.Sprintf("%s-auth", serviceNameFromLabel)
-	config.AddAuthMiddleware(authMiddlewareName, serviceToken)
+	authMiddlewareCreated := false
+	if serviceToken != "" {
+		config.AddAuthMiddleware(authMiddlewareName, serviceToken)
+		authMiddlewareCreated = true
+	} else {
+		// Skip creating middleware if no token (avoids empty headers: {} in YAML)
+		p.logger.Debug("Skipping auth middleware creation (no token)",
+			logging.String("middleware", authMiddlewareName),
+		)
+	}
 
 	// Add routers (with auth middleware and retry middleware)
+	// USER_AUTH_ENABLED controls whether user JWT auth is required for labs
+	// - When false (default): Skip auth-check middlewares (no user auth required)
+	// - When true: Include auth-check middlewares (user must be authenticated)
+	// Note: SKIP_AUTH_CHECK is deprecated, use USER_AUTH_ENABLED=false instead
+	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == "true"
+	skipAuthCheck := os.Getenv("SKIP_AUTH_CHECK") == "true" || !userAuthEnabled
+	
 	for routerName, routerConfig := range routerConfigs {
-		// Add service auth middleware if not already present
-		// Note: Middleware order doesn't matter for header conflicts since we use
-		// X-Serverless-Authorization (doesn't conflict with user's Authorization header)
-		hasServiceAuth := false
-		for _, mw := range routerConfig.Middlewares {
-			if mw == authMiddlewareName || mw == fmt.Sprintf("%s@file", authMiddlewareName) {
-				hasServiceAuth = true
-				break
+		// Filter out auth-check middlewares if user auth is disabled
+		// These middlewares use forwardAuth which requires home-index service
+		if skipAuthCheck {
+			filteredMiddlewares := make([]string, 0, len(routerConfig.Middlewares))
+			for _, mw := range routerConfig.Middlewares {
+				if !strings.Contains(mw, "auth-check") {
+					filteredMiddlewares = append(filteredMiddlewares, mw)
+				} else {
+					p.logger.Debug("Skipping auth-check middleware (USER_AUTH_ENABLED=false)",
+						logging.String("router", routerName),
+						logging.String("middleware", mw))
+				}
 			}
+			routerConfig.Middlewares = filteredMiddlewares
 		}
 
-		if !hasServiceAuth {
-			// Prepend service auth middleware (runs before other middlewares)
-			// This ensures service-to-service auth is set early in the request chain
-			routerConfig.Middlewares = append([]string{authMiddlewareName}, routerConfig.Middlewares...)
+		// Auto-inject strip-prefix middleware for lab routes if not already present
+		// This ensures /lab1 requests get their prefix stripped before reaching the backend
+		// Lab services expect requests at / (root), not /lab1
+		stripPrefixMiddleware := getStripPrefixMiddleware(routerName, routerConfig.Rule)
+		if stripPrefixMiddleware != "" {
+			hasStripPrefix := false
+			for _, mw := range routerConfig.Middlewares {
+				if strings.Contains(mw, "strip-") && strings.Contains(mw, "-prefix") {
+					hasStripPrefix = true
+					break
+				}
+			}
+			if !hasStripPrefix {
+				// Add strip-prefix middleware after auth but before retry
+				routerConfig.Middlewares = append(routerConfig.Middlewares, stripPrefixMiddleware)
+				p.logger.Debug("Auto-injected strip-prefix middleware",
+					logging.String("router", routerName),
+					logging.String("middleware", stripPrefixMiddleware))
+			}
+		}
+		
+		// Add service auth middleware if it was created and not already present
+		// Note: Middleware order doesn't matter for header conflicts since we use
+		// X-Serverless-Authorization (doesn't conflict with user's Authorization header)
+		if authMiddlewareCreated {
+			hasServiceAuth := false
+			for _, mw := range routerConfig.Middlewares {
+				if mw == authMiddlewareName || mw == fmt.Sprintf("%s@file", authMiddlewareName) {
+					hasServiceAuth = true
+					break
+				}
+			}
+
+			if !hasServiceAuth {
+				// Prepend service auth middleware (runs before other middlewares)
+				// This ensures service-to-service auth is set early in the request chain
+				routerConfig.Middlewares = append([]string{authMiddlewareName}, routerConfig.Middlewares...)
+			}
 		}
 
 		// Always add retry middleware for cold starts (at the end)
@@ -359,7 +476,34 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 			routerConfig.Middlewares = append(routerConfig.Middlewares, "retry-cold-start@file")
 		}
 
-		config.AddRouter(routerName, routerConfig)
+		// Log router configuration with middlewares (user-friendly format)
+		middlewareList := strings.Join(routerConfig.Middlewares, ", ")
+		if middlewareList == "" {
+			middlewareList = "none"
+		}
+		
+		// Check if service auth middleware is present for better debugging
+		hasAuthMw := false
+		for _, mw := range routerConfig.Middlewares {
+			if mw == authMiddlewareName {
+				hasAuthMw = true
+				break
+			}
+		}
+		
+		p.logger.Info("Router configured",
+			logging.GetCodeField(logging.CodeRouterConfigured),
+			logging.String("router", routerName),
+			logging.String("rule", routerConfig.Rule),
+			logging.String("service", routerConfig.Service),
+			logging.String("middlewares", fmt.Sprintf("[%s]", middlewareList)),
+			logging.String("expectedAuthMiddleware", authMiddlewareName),
+			logging.String("hasAuthMiddleware", fmt.Sprintf("%v", hasAuthMw)),
+		)
+
+		// Use AddRouterWithSource to handle conflicts when multiple services define the same router
+		// Dedicated services (e.g., lab1-c2-stg for lab1-c2 router) take precedence
+		config.AddRouterWithSource(routerName, routerConfig, service.Name)
 	}
 
 	// Add service definition
@@ -377,4 +521,55 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	)
 
 	return nil
+}
+
+// getStripPrefixMiddleware returns the appropriate strip-prefix middleware name
+// for a given router based on its name and rule. Returns empty string if no
+// strip-prefix middleware should be auto-injected.
+//
+// This function automatically injects strip-prefix middlewares for lab routes
+// because lab services expect requests at / (root), not /labN.
+// The middlewares must be pre-defined in the static routes.yml file.
+func getStripPrefixMiddleware(routerName, rule string) string {
+	// Map of router name patterns to their strip-prefix middleware
+	// These middlewares are defined in e-skimming-labs/deploy/traefik/dynamic/routes.yml
+	stripPrefixMap := map[string]string{
+		// Lab 1 routes
+		"lab1":        "strip-lab1-prefix@file",
+		"lab1-static": "strip-lab1-prefix@file",
+		"lab1-c2":     "strip-lab1-c2-prefix@file",
+		// Lab 2 routes
+		"lab2":        "strip-lab2-prefix@file",
+		"lab2-main":   "strip-lab2-prefix@file",
+		"lab2-static": "strip-lab2-prefix@file",
+		"lab2-c2":     "strip-lab2-c2-prefix@file",
+		// Lab 3 routes
+		"lab3":        "strip-lab3-prefix@file",
+		"lab3-main":   "strip-lab3-prefix@file",
+		"lab3-static": "strip-lab3-prefix@file",
+		"lab3-extension": "strip-lab3-extension-prefix@file",
+		// API routes
+		"home-seo":       "strip-seo-prefix@file",
+		"labs-analytics": "strip-analytics-prefix@file",
+	}
+
+	// Check for exact match first
+	if middleware, ok := stripPrefixMap[routerName]; ok {
+		return middleware
+	}
+
+	// Check for prefix match (e.g., "lab1-something" matches "lab1")
+	// But skip if already handled by exact match above
+	for prefix, middleware := range stripPrefixMap {
+		if strings.HasPrefix(routerName, prefix+"-") {
+			// Skip if this is a more specific route that should have its own middleware
+			// (these are already in the map above)
+			if strings.Contains(routerName, "-c2") || strings.Contains(routerName, "-extension") {
+				continue
+			}
+			return middleware
+		}
+	}
+
+	return ""
 }

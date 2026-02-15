@@ -1,0 +1,85 @@
+# docker-compose.plugin-local.yml - E2E testing with Traefik local plugin mode (Yaegi)
+#
+# REQUIREMENTS:
+# 1. Run `go mod vendor` first - Yaegi requires vendored dependencies
+# 2. Vendor directory is copied into the container
+#
+# POTENTIAL ISSUES:
+# - GCP SDK may have Yaegi compatibility issues (reflection, unsafe, gRPC)
+# - If plugin fails to load, use ./test-provider.sh instead (external binary)
+#
+# See: https://doc.traefik.io/traefik-hub/api-gateway/guides/plugin-development-guide
+version: '3.8'
+
+services:
+  # Traefik v2.10 with local plugin mode
+  traefik:
+    build:
+      context: .
+      dockerfile: Dockerfile.plugin-local
+    command:
+      # API and Dashboard
+      - --api.dashboard=true
+      - --api.insecure=true
+
+      # Logging
+      - --log.level=DEBUG
+      - --accesslog=true
+      - --accesslog.format=json
+
+      # Local plugin mode (Yaegi - will fail with GCP SDK)
+      - --experimental.localPlugins.cloudrun.moduleName=github.com/pci-tamper-protect/traefik-cloudrun-provider
+      - --providers.plugin.cloudrun.pollInterval=30s
+
+      # File provider for static middlewares (like retry-cold-start)
+      - --providers.file.directory=/etc/traefik/dynamic
+      - --providers.file.watch=true
+
+      # Entrypoints
+      - --entryPoints.web.address=:80
+      - --entryPoints.websecure.address=:443
+    ports:
+      - "${TRAEFIK_WEB_PORT:-8090}:80"     # Web traffic (local:container)
+      - "${TRAEFIK_API_PORT:-8091}:8080"   # Dashboard/API (local:container)
+    volumes:
+      # Mount ADC credentials for GCP API access
+      - ${HOME}/.config/gcloud:/home/traefik/.config/gcloud:ro
+      # Mount dynamic config directory for static middlewares
+      - ./tests/e2e/traefik/dynamic:/etc/traefik/dynamic:ro
+    environment:
+      - LABS_PROJECT_ID=${LABS_PROJECT_ID:-my-project-stg}
+      - HOME_PROJECT_ID=${HOME_PROJECT_ID:-my-home-stg}
+      - REGION=${REGION:-us-central1}
+      - LOG_LEVEL=DEBUG
+      - LOG_FORMAT=text
+      - CLOUDRUN_PROVIDER_DEV_MODE=true
+    networks:
+      - traefik-plugin-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.dashboard.rule=Host(`traefik.localhost`)"
+      - "traefik.http.routers.dashboard.service=api@internal"
+
+  # Backend - Private service (only accessible through Traefik)
+  # This simulates a Cloud Run service that would be discovered by the plugin
+  backend:
+    build:
+      context: ./tests/e2e/backend
+      dockerfile: Dockerfile
+    environment:
+      - PORT=8080
+    networks:
+      - traefik-plugin-network
+    labels:
+      # Enable Traefik
+      - "traefik.enable=true"
+      # HTTP Router for API
+      - "traefik.http.routers.backend.rule=Host(`api.localhost`)"
+      - "traefik.http.routers.backend.entrypoints=web"
+      - "traefik.http.routers.backend.service=backend"
+      # Service
+      - "traefik.http.services.backend.loadbalancer.server.port=8080"
+
+networks:
+  traefik-plugin-network:
+    driver: bridge

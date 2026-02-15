@@ -4,6 +4,8 @@ version: '3.8'
 
 services:
   # Traefik - Public Gateway (like Cloud Run's public Traefik service)
+  # NOTE: e-skimming-labs uses Traefik v3.0 in production
+  # This v2.10 is for E2E testing only (v2.10 doesn't support local plugins)
   traefik:
     image: traefik:v2.10
     command:
@@ -36,6 +38,7 @@ services:
       - "traefik.http.routers.dashboard.service=api@internal"
 
   # Backend - Private service (only accessible through Traefik)
+  # No ports exposed - service is private/internal only
   backend:
     build:
       context: ./tests/e2e/backend
@@ -44,6 +47,7 @@ services:
       - PORT=8080
     networks:
       - traefik-network
+    # No ports exposed - private service
     labels:
       # Enable Traefik
       - "traefik.enable=true"
@@ -61,18 +65,23 @@ services:
       - "traefik.http.middlewares.backend-headers.headers.customrequestheaders.X-Forwarded-By=traefik"
 
   # Frontend - Private service (only accessible through Traefik)
+  # No ports exposed - service is private/internal only
   frontend:
     build:
       context: ./tests/e2e/frontend
       dockerfile: Dockerfile
     environment:
       - PORT=8080
-      # Frontend calls backend directly (like Cloud Run service-to-service)
-      - BACKEND_URL=http://backend:8080
+      # Frontend calls backend via Traefik gateway (simulating Cloud Run service-to-service)
+      # Using Traefik's internal network address
+      - BACKEND_URL=http://traefik:80
+      - BACKEND_HOST=api.localhost
     networks:
       - traefik-network
     depends_on:
       - backend
+      - traefik
+    # No ports exposed - private service
     labels:
       # Enable Traefik
       - "traefik.enable=true"

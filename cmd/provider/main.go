@@ -4,6 +4,9 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"os/signal"
+	"strconv"
+	"syscall"
 	"time"
 
 	"github.com/joho/godotenv"
@@ -12,9 +15,10 @@ import (
 )
 
 const (
-	defaultEnvironment = "stg"
-	defaultRegion      = "us-central1"
-	defaultOutputFile  = "/etc/traefik/dynamic/routes.yml"
+	defaultEnvironment   = "stg"
+	defaultRegion        = "us-central1"
+	defaultOutputFile    = "/etc/traefik/dynamic/routes.yml"
+	defaultPollInterval  = 30 * time.Second
 )
 
 func main() {
@@ -38,6 +42,10 @@ func main() {
 	fmt.Fprintf(os.Stderr, "   Projects: %v\n", config.ProjectIDs)
 	fmt.Fprintf(os.Stderr, "   Region: %s\n", config.Region)
 	fmt.Fprintf(os.Stderr, "   Output: %s\n", config.OutputFile)
+	fmt.Fprintf(os.Stderr, "   Mode: %s\n", config.Mode)
+	if config.Mode == "daemon" {
+		fmt.Fprintf(os.Stderr, "   Poll Interval: %s\n", config.PollInterval)
+	}
 	fmt.Fprintf(os.Stderr, "\n")
 
 	// Create output directory
@@ -49,7 +57,7 @@ func main() {
 	providerConfig := &provider.Config{
 		ProjectIDs:   config.ProjectIDs,
 		Region:       config.Region,
-		PollInterval: 30 * time.Second, // Not used in one-shot mode
+		PollInterval: config.PollInterval,
 	}
 
 	p, err := provider.New(providerConfig)
@@ -57,7 +65,15 @@ func main() {
 		log.Fatalf("Failed to create provider: %v", err)
 	}
 
-	// Generate configuration (one-shot, not continuous polling)
+	if config.Mode == "daemon" {
+		runDaemon(p, config)
+	} else {
+		runOnce(p, config)
+	}
+}
+
+// runOnce generates configuration once and exits
+func runOnce(p *provider.Provider, config *AppConfig) {
 	configChan := make(chan *provider.DynamicConfig, 1)
 	if err := p.Start(configChan); err != nil {
 		log.Fatalf("Failed to start provider: %v", err)
@@ -66,32 +82,88 @@ func main() {
 	// Wait for first configuration
 	select {
 	case dynamicConfig := <-configChan:
-		// Write routes.yml
 		if err := writeRoutes(config.OutputFile, dynamicConfig); err != nil {
 			log.Fatalf("Failed to write routes file: %v", err)
 		}
-
-		fmt.Fprintf(os.Stderr, "\n✅ Routes file generated at %s\n", config.OutputFile)
-		fmt.Fprintf(os.Stderr, "\n📊 Summary:\n")
-		fmt.Fprintf(os.Stderr, "   Routers: %d\n", len(dynamicConfig.HTTP.Routers))
-		fmt.Fprintf(os.Stderr, "   Services: %d\n", len(dynamicConfig.HTTP.Services))
-		fmt.Fprintf(os.Stderr, "   Middlewares: %d\n", len(dynamicConfig.HTTP.Middlewares))
+		printSummary(config.OutputFile, dynamicConfig)
 
 	case <-time.After(60 * time.Second):
 		log.Fatalf("Timeout waiting for configuration")
 	}
 
-	// Stop provider
 	if err := p.Stop(); err != nil {
 		log.Printf("Warning: Failed to stop provider: %v", err)
 	}
 }
 
+// runDaemon runs continuously, regenerating routes on interval
+func runDaemon(p *provider.Provider, config *AppConfig) {
+	fmt.Fprintf(os.Stderr, "🔄 Running in daemon mode (poll every %s)\n", config.PollInterval)
+
+	// Handle graceful shutdown
+	sigChan := make(chan os.Signal, 1)
+	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
+
+	configChan := make(chan *provider.DynamicConfig, 1)
+	ticker := time.NewTicker(config.PollInterval)
+	defer ticker.Stop()
+
+	// Generate initial configuration
+	generateAndWrite(p, config, configChan)
+
+	generation := 1
+	for {
+		select {
+		case <-ticker.C:
+			generation++
+			fmt.Fprintf(os.Stderr, "\n🔄 [Gen %d] Regenerating routes at %s\n", generation, time.Now().Format(time.RFC3339))
+			generateAndWrite(p, config, configChan)
+
+		case sig := <-sigChan:
+			fmt.Fprintf(os.Stderr, "\n⏹️  Received %s, shutting down...\n", sig)
+			if err := p.Stop(); err != nil {
+				log.Printf("Warning: Failed to stop provider: %v", err)
+			}
+			return
+		}
+	}
+}
+
+func generateAndWrite(p *provider.Provider, config *AppConfig, configChan chan *provider.DynamicConfig) {
+	if err := p.Start(configChan); err != nil {
+		log.Printf("Error starting provider: %v", err)
+		return
+	}
+
+	select {
+	case dynamicConfig := <-configChan:
+		if err := writeRoutes(config.OutputFile, dynamicConfig); err != nil {
+			log.Printf("Error writing routes file: %v", err)
+		} else {
+			printSummary(config.OutputFile, dynamicConfig)
+		}
+	case <-time.After(60 * time.Second):
+		log.Printf("Timeout waiting for configuration")
+	}
+
+	// Note: Don't stop provider in daemon mode between polls
+}
+
+func printSummary(outputFile string, dynamicConfig *provider.DynamicConfig) {
+	fmt.Fprintf(os.Stderr, "✅ Routes file generated at %s\n", outputFile)
+	fmt.Fprintf(os.Stderr, "📊 Summary: Routers=%d Services=%d Middlewares=%d\n",
+		len(dynamicConfig.HTTP.Routers),
+		len(dynamicConfig.HTTP.Services),
+		len(dynamicConfig.HTTP.Middlewares))
+}
+
 type AppConfig struct {
-	Environment string
-	ProjectIDs  []string
-	Region      string
-	OutputFile  string
+	Environment  string
+	ProjectIDs   []string
+	Region       string
+	OutputFile   string
+	Mode         string        // "once" or "daemon"
+	PollInterval time.Duration
 }
 
 func loadConfig() *AppConfig {
@@ -125,11 +197,29 @@ func loadConfig() *AppConfig {
 		outputFile = os.Args[1]
 	}
 
+	// Mode: "once" (default) or "daemon"
+	mode := os.Getenv("MODE")
+	if mode == "" {
+		mode = "once"
+	}
+
+	// Poll interval for daemon mode
+	pollInterval := defaultPollInterval
+	if intervalStr := os.Getenv("POLL_INTERVAL"); intervalStr != "" {
+		if seconds, err := strconv.Atoi(intervalStr); err == nil {
+			pollInterval = time.Duration(seconds) * time.Second
+		} else if parsed, err := time.ParseDuration(intervalStr); err == nil {
+			pollInterval = parsed
+		}
+	}
+
 	return &AppConfig{
-		Environment: env,
-		ProjectIDs:  projectIDs,
-		Region:      region,
-		OutputFile:  outputFile,
+		Environment:  env,
+		ProjectIDs:   projectIDs,
+		Region:       region,
+		OutputFile:   outputFile,
+		Mode:         mode,
+		PollInterval: pollInterval,
 	}
 }
 
