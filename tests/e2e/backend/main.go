@@ -7,8 +7,57 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
+
+// sensitiveHeaders lists headers whose values must be sanitized in logs.
+// This is test-only code; full values are still returned in JSON responses.
+var sensitiveHeaders = map[string]bool{
+	"Authorization":              true,
+	"X-Serverless-Authorization": true,
+}
+
+// sanitizeForLog strips the JWT signature (third segment) from Bearer tokens
+// so the header and payload remain readable for debugging but the token is
+// no longer usable for authentication.
+func sanitizeForLog(value string) string {
+	v := value
+	prefix := ""
+	if strings.HasPrefix(v, "Bearer ") {
+		prefix = "Bearer "
+		v = v[len(prefix):]
+	}
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) == 3 {
+		return prefix + parts[0] + "." + parts[1] + ".<sig-redacted>"
+	}
+	// Not a JWT — truncate generically
+	if len(value) > 40 {
+		return value[:20] + "..." + value[len(value)-20:]
+	}
+	return value
+}
+
+// sanitizeHeaderValue returns a log-safe version of a header value.
+func sanitizeHeaderValue(name, value string) string {
+	if sensitiveHeaders[http.CanonicalHeaderKey(name)] {
+		return sanitizeForLog(value)
+	}
+	return value
+}
+
+// sanitizeHeaderValues returns a display-safe version of header values.
+func sanitizeHeaderValues(name string, values []string) string {
+	if sensitiveHeaders[http.CanonicalHeaderKey(name)] {
+		parts := make([]string, len(values))
+		for i, v := range values {
+			parts[i] = sanitizeForLog(v)
+		}
+		return "[" + strings.Join(parts, ", ") + "]"
+	}
+	return strings.Join(values, ", ")
+}
 
 type Response struct {
 	Message string `json:"message"`
@@ -62,11 +111,11 @@ func main() {
 	http.HandleFunc("/debug/headers", func(w http.ResponseWriter, r *http.Request) {
 		log.Printf("Backend: DEBUG - received request from %s", r.RemoteAddr)
 
-		// Log all headers
+		// Log all headers (sensitive values truncated)
 		log.Println("Backend: All headers received:")
 		for name, values := range r.Header {
 			for _, value := range values {
-				log.Printf("  %s: %s", name, value)
+				log.Printf("  %s: %s", name, sanitizeHeaderValue(name, value))
 			}
 		}
 
@@ -100,11 +149,11 @@ func main() {
 			}
 		}
 
-		// Collect all headers
+		// Collect all headers (sensitive values truncated in logs)
 		headers := make(map[string][]string)
 		for name, values := range r.Header {
 			headers[name] = values
-			log.Printf("Backend: Header %s = %v", name, values)
+			log.Printf("Backend: Header %s = %s", name, sanitizeHeaderValues(name, values))
 		}
 
 		// Collect query parameters

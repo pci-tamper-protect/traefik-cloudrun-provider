@@ -6,8 +6,29 @@ import (
 	"net/http"
 	"os"
 	"sort"
+	"strings"
 	"time"
 )
+
+// sanitizeForLog strips the JWT signature (third segment) from Bearer tokens
+// so the header and payload remain readable but the token cannot be reused.
+// This is test-only code; full values are still returned in JSON responses.
+func sanitizeForLog(value string) string {
+	v := value
+	prefix := ""
+	if strings.HasPrefix(v, "Bearer ") {
+		prefix = "Bearer "
+		v = v[len(prefix):]
+	}
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) == 3 {
+		return prefix + parts[0] + "." + parts[1] + ".<sig-redacted>"
+	}
+	if len(value) > 80 {
+		return value[:40] + "..." + value[len(value)-37:]
+	}
+	return value
+}
 
 type HeaderInspection struct {
 	Timestamp   string              `json:"timestamp"`
@@ -83,10 +104,10 @@ func logInspection(inspection HeaderInspection) {
 	log.Printf("")
 	log.Printf("🔐 Auth Headers:")
 	if inspection.AuthHeaders.XServerlessAuthorization != "" {
-		log.Printf("   X-Serverless-Authorization: %s", truncate(inspection.AuthHeaders.XServerlessAuthorization, 60))
+		log.Printf("   X-Serverless-Authorization: %s", sanitizeForLog(inspection.AuthHeaders.XServerlessAuthorization))
 	}
 	if inspection.AuthHeaders.Authorization != "" {
-		log.Printf("   Authorization: %s", truncate(inspection.AuthHeaders.Authorization, 60))
+		log.Printf("   Authorization: %s", sanitizeForLog(inspection.AuthHeaders.Authorization))
 	}
 	if inspection.AuthHeaders.XForwardedFor != "" {
 		log.Printf("   X-Forwarded-For: %s", inspection.AuthHeaders.XForwardedFor)
@@ -104,12 +125,17 @@ func logInspection(inspection HeaderInspection) {
 	}
 	sort.Strings(headers)
 
+	sensitiveKeys := map[string]bool{
+		"Authorization":              true,
+		"X-Serverless-Authorization": true,
+	}
 	for _, k := range headers {
 		values := inspection.Headers[k]
 		for _, v := range values {
-			// Truncate long values
 			displayValue := v
-			if len(v) > 80 {
+			if sensitiveKeys[k] {
+				displayValue = sanitizeForLog(v)
+			} else if len(v) > 80 {
 				displayValue = v[:40] + "..." + v[len(v)-37:]
 			}
 			log.Printf("   %s: %s", k, displayValue)
@@ -118,13 +144,6 @@ func logInspection(inspection HeaderInspection) {
 	log.Printf("========================================")
 }
 
-func truncate(s string, maxLen int) string {
-	if len(s) <= maxLen {
-		return s
-	}
-	half := maxLen / 2
-	return s[:half-2] + "..." + s[len(s)-(half-1):]
-}
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

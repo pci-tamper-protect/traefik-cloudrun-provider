@@ -7,8 +7,42 @@ import (
 	"log"
 	"net/http"
 	"os"
+	"strings"
 	"time"
 )
+
+// sensitiveHeaders lists headers whose values must be sanitized in logs.
+// This is test-only code; full values are still returned in JSON responses.
+var sensitiveHeaders = map[string]bool{
+	"Authorization":              true,
+	"X-Serverless-Authorization": true,
+}
+
+// sanitizeForLog strips the JWT signature (third segment) from Bearer tokens.
+func sanitizeForLog(value string) string {
+	v := value
+	prefix := ""
+	if strings.HasPrefix(v, "Bearer ") {
+		prefix = "Bearer "
+		v = v[len(prefix):]
+	}
+	parts := strings.SplitN(v, ".", 3)
+	if len(parts) == 3 {
+		return prefix + parts[0] + "." + parts[1] + ".<sig-redacted>"
+	}
+	if len(value) > 40 {
+		return value[:20] + "..." + value[len(value)-20:]
+	}
+	return value
+}
+
+// sanitizeHeaderValue returns a log-safe version of a header value.
+func sanitizeHeaderValue(name, value string) string {
+	if sensitiveHeaders[http.CanonicalHeaderKey(name)] {
+		return sanitizeForLog(value)
+	}
+	return value
+}
 
 type QueryResponse struct {
 	Request  RequestDetails  `json:"request"`
@@ -87,11 +121,13 @@ func main() {
 		startTime := time.Now()
 		log.Printf("Frontend: received request from %s", r.RemoteAddr)
 
-		// Collect all frontend headers
+		// Collect all frontend headers (sensitive values sanitized in logs)
 		frontendHeaders := make(map[string][]string)
 		for name, values := range r.Header {
 			frontendHeaders[name] = values
-			log.Printf("Frontend: Header %s = %v", name, values)
+			for _, v := range values {
+				log.Printf("Frontend: Header %s = %s", name, sanitizeHeaderValue(name, v))
+			}
 		}
 
 		// Call backend service via /api/query through Traefik
