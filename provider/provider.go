@@ -128,6 +128,12 @@ func (p *Provider) Stop() error {
 	return nil
 }
 
+// RunOnce discovers services and generates configuration once, without starting a polling goroutine.
+// Use this in daemon mode where the caller manages the polling interval.
+func (p *Provider) RunOnce(configChan chan<- *DynamicConfig) error {
+	return p.updateConfig(configChan)
+}
+
 // pollLoop polls Cloud Run API at configured intervals
 func (p *Provider) pollLoop(configChan chan<- *DynamicConfig) {
 	ticker := time.NewTicker(p.config.PollInterval)
@@ -240,6 +246,54 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 				logging.Int("enabledCount", traefikEnabledCount),
 				logging.Int("totalServices", len(services)),
 			)
+		}
+	}
+
+	// Fallback: use HOME_INDEX_URL env when discovery didn't find home-index
+	// (e.g. home-index in labs-home-* project, provider SA lacks run.viewer, or service not yet deployed)
+	if homeIndexURL == "" {
+		homeIndexURL = strings.TrimSpace(os.Getenv("HOME_INDEX_URL"))
+		if homeIndexURL != "" {
+			p.logger.Info("Using HOME_INDEX_URL from env (discovery did not find home-index)",
+				logging.String("homeIndexURL", homeIndexURL),
+			)
+		}
+	}
+
+	// When using HOME_INDEX_URL fallback, add home-index service and routers if not already discovered
+	// Without this, routes.yml would have no route for "/" and labs.pcioasis.com would return 404
+	if homeIndexURL != "" {
+		if _, hasService := config.HTTP.Services["home-index"]; !hasService {
+			p.logger.Info("Adding home-index service and routers from HOME_INDEX_URL (not discovered from Cloud Run)")
+			serviceToken, _ := p.tokenManager.GetToken(homeIndexURL)
+			if serviceToken != "" {
+				config.AddAuthMiddleware("home-index-auth", serviceToken)
+			}
+			routerMiddlewares := []string{"forwarded-headers@file"}
+			if serviceToken != "" {
+				routerMiddlewares = append([]string{"home-index-auth"}, routerMiddlewares...)
+			}
+			routerMiddlewares = append(routerMiddlewares, "retry-cold-start@file")
+			config.AddService("home-index", ServiceConfig{
+				LoadBalancer: LoadBalancerConfig{
+					Servers:        []ServerConfig{{URL: homeIndexURL}},
+					PassHostHeader: false,
+				},
+			})
+			config.AddRouter("home-index", RouterConfig{
+				Rule:        "PathPrefix(`/`)",
+				Service:     "home-index",
+				Priority:    1,
+				EntryPoints: []string{"web"},
+				Middlewares: routerMiddlewares,
+			})
+			config.AddRouter("home-index-signin", RouterConfig{
+				Rule:        "Path(`/sign-in`) || Path(`/sign-up`)",
+				Service:     "home-index",
+				Priority:    100,
+				EntryPoints: []string{"web"},
+				Middlewares: []string{"signin-headers@file", "forwarded-headers@file", "retry-cold-start@file"},
+			})
 		}
 	}
 
