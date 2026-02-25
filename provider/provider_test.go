@@ -177,9 +177,9 @@ func TestProcessService_WithValidLabels(t *testing.T) {
 		t.Error("Expected at least one service to be configured")
 	}
 
-	if len(dynamicConfig.HTTP.Middlewares) == 0 {
-		t.Error("Expected at least one middleware to be configured")
-	}
+	// Auth middleware is only added when a GCP identity token is available.
+	// In the test environment there is no metadata server, so no middleware
+	// is expected here — that is correct behaviour.
 }
 
 func TestDynamicConfig_AddRouter(t *testing.T) {
@@ -282,15 +282,11 @@ func TestDynamicConfig_AddAuthMiddleware_EmptyToken(t *testing.T) {
 
 	config.AddAuthMiddleware("test-auth", "")
 
-	middleware, ok := config.HTTP.Middlewares["test-auth"]
-	if !ok {
-		t.Fatal("Middleware not found in config")
-	}
-
-	// When token is empty, no X-Serverless-Authorization header should be set
-	// This allows the service to return 401 naturally
-	if len(middleware.Headers.CustomRequestHeaders) != 0 {
-		t.Errorf("Expected no custom headers for empty token, got %d", len(middleware.Headers.CustomRequestHeaders))
+	// Empty token: middleware must be skipped entirely.
+	// An empty headers map serialises to "headers: {}" which causes a Traefik
+	// YAML parse error: "headers cannot be a standalone element".
+	if len(config.HTTP.Middlewares) != 0 {
+		t.Errorf("Expected no middleware for empty token, got %d middleware(s)", len(config.HTTP.Middlewares))
 	}
 }
 
