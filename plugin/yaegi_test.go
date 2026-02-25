@@ -20,7 +20,7 @@ import (
 
 // setupYaegiInterpreter creates a Yaegi interpreter configured like Traefik
 // Traefik expects plugins in: plugins-local/src/<module-path>/
-func setupYaegiInterpreter(t *testing.T) (*interp.Interpreter, string) {
+func setupYaegiInterpreter(t *testing.T) *interp.Interpreter {
 	t.Helper()
 
 	// Find the module root (where go.mod is)
@@ -58,14 +58,14 @@ func setupYaegiInterpreter(t *testing.T) (*interp.Interpreter, string) {
 		t.Fatalf("Failed to load stdlib symbols: %v", err)
 	}
 
-	return i, moduleRoot
+	return i
 }
 
 // TestYaegiCanLoadPlugin tests if Yaegi can interpret the plugin package.
 // This test documents Yaegi compatibility - failures are expected and informational.
 // Run with: go test -v ./plugin -run TestYaegi
 func TestYaegiCanLoadPlugin(t *testing.T) {
-	i, _ := setupYaegiInterpreter(t)
+	i := setupYaegiInterpreter(t)
 
 	// Helper to safely test imports (Yaegi may panic on incompatible code)
 	safeEval := func(code string) (err error) {
@@ -131,7 +131,7 @@ func TestYaegiCanLoadPlugin(t *testing.T) {
 // TestYaegiCreateConfig tests if CreateConfig can be called via Yaegi.
 // This test is expected to be skipped due to GCP SDK incompatibility.
 func TestYaegiCreateConfig(t *testing.T) {
-	i, _ := setupYaegiInterpreter(t)
+	i := setupYaegiInterpreter(t)
 
 	// Helper to safely test (Yaegi may panic)
 	safeEval := func(code string) (v interface{}, err error) {

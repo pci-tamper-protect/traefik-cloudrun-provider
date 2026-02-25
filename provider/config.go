@@ -35,13 +35,13 @@ type ForwardAuthConfig struct {
 
 // HeadersConfig represents headers middleware configuration
 type HeadersConfig struct {
-	CustomRequestHeaders map[string]string        `yaml:"customRequestHeaders,omitempty"`
+	CustomRequestHeaders map[string]string       `yaml:"customRequestHeaders,omitempty"`
 	ForwardedHeaders     *ForwardedHeadersConfig `yaml:"forwardedHeaders,omitempty"`
 }
 
 // ForwardedHeadersConfig represents forwarded headers configuration within Headers middleware
 type ForwardedHeadersConfig struct {
-	Insecure  bool     `yaml:"insecure,omitempty"`
+	Insecure   bool     `yaml:"insecure,omitempty"`
 	TrustedIPs []string `yaml:"trustedIPs,omitempty"`
 }
 
@@ -62,7 +62,6 @@ func NewDynamicConfig() *DynamicConfig {
 	}
 }
 
-
 // AddRouter adds a router to the configuration
 // If a router with the same name already exists, it will be replaced only if
 // the new source is a "dedicated" service for that router (e.g., lab1-c2-stg for lab1-c2 router)
@@ -74,13 +73,13 @@ func (c *DynamicConfig) AddRouter(name string, config RouterConfig) {
 // sourceName is the Cloud Run service name that defines this router
 func (c *DynamicConfig) AddRouterWithSource(name string, config RouterConfig, sourceName string) {
 	existingSource, exists := c.routerSources[name]
-	
+
 	if exists {
 		// Check if the new source is more specific/dedicated for this router
 		// A dedicated service name contains the router name (e.g., "lab1-c2-stg" for "lab1-c2")
 		newIsDedicated := isDedicatedService(name, sourceName)
 		existingIsDedicated := isDedicatedService(name, existingSource)
-		
+
 		// Only replace if:
 		// 1. New source is dedicated and existing is not, OR
 		// 2. Both are dedicated (or both are not) - last one wins
@@ -89,7 +88,7 @@ func (c *DynamicConfig) AddRouterWithSource(name string, config RouterConfig, so
 			return
 		}
 	}
-	
+
 	c.HTTP.Routers[name] = config
 	c.routerSources[name] = sourceName
 }
@@ -100,24 +99,24 @@ func (c *DynamicConfig) AddRouterWithSource(name string, config RouterConfig, so
 func isDedicatedService(routerName, serviceName string) bool {
 	// Normalize router name: lab1-c2 -> lab1-c2
 	// Normalize service name: lab1-c2-stg -> lab1-c2, lab-01-basic-magecart-stg -> lab-01-basic-magecart
-	
+
 	// Remove common suffixes like -stg, -prd, -dev
 	normalizedService := serviceName
 	for _, suffix := range []string{"-stg", "-prd", "-dev", "-staging", "-production"} {
 		normalizedService = strings.TrimSuffix(normalizedService, suffix)
 	}
-	
+
 	// Check if the normalized service name matches or contains the router name
 	// lab1-c2 matches lab1-c2-stg (normalized: lab1-c2)
 	// lab1-c2 does NOT match lab-01-basic-magecart-stg (normalized: lab-01-basic-magecart)
 	if normalizedService == routerName {
 		return true
 	}
-	
+
 	// Also check with hyphens normalized (lab1-c2 vs lab1c2)
 	normalizedRouter := strings.ReplaceAll(routerName, "-", "")
 	normalizedServiceNoHyphen := strings.ReplaceAll(normalizedService, "-", "")
-	
+
 	return normalizedServiceNoHyphen == normalizedRouter
 }
 
@@ -142,15 +141,15 @@ func sanitizeEmail(email string) string {
 		// Not a valid email format, return as-is
 		return email
 	}
-	
+
 	localPart := email[:atIndex]
 	domain := email[atIndex+1:]
-	
+
 	// Show first 2 characters of local part, or all if less than 2
 	if len(localPart) <= 2 {
 		return email // Too short to sanitize meaningfully
 	}
-	
+
 	return localPart[:2] + "@" + domain
 }
 
@@ -260,22 +259,42 @@ func (c *DynamicConfig) AddTraefikInternalRouters() {
 }
 
 // AddForwardAuthMiddleware adds a forwardAuth middleware for user JWT validation
-// This middleware forwards auth checks to the home-index service
+// This middleware forwards auth checks to the home-index service via Traefik's own router.
+//
+// Why localhost:8080 instead of the Cloud Run URL directly?
+// home-index is a private Cloud Run service (--no-allow-unauthenticated). Direct ForwardAuth
+// requests to the Cloud Run URL would fail with 403 because ForwardAuth doesn't include the
+// Cloud Run identity token. By routing through localhost:8080 (Traefik itself), the request
+// goes through the home-index router which has the home-index-auth middleware that adds the
+// X-Serverless-Authorization header with the Cloud Run identity token.
+//
+// Note: X-Forwarded-Uri is NOT listed in authRequestHeaders because Traefik ForwardAuth
+// automatically sets it to the original request's URI (/lab2, /lab3, etc.). Adding it to
+// authRequestHeaders would copy an empty value from the browser request, overwriting the
+// correctly auto-set value and breaking the post-login redirect target.
 func (c *DynamicConfig) AddForwardAuthMiddleware(name, homeIndexURL string) {
 	if homeIndexURL == "" {
 		fmt.Printf("[ConfigBuilder] ⚠️  Skipping forwardAuth middleware '%s' (no home-index URL provided)\n", name)
 		return
 	}
 
+	// Route auth check through Traefik itself (localhost) so the home-index-auth middleware
+	// can add the Cloud Run identity token (X-Serverless-Authorization) before the request
+	// reaches the private home-index Cloud Run backend.
+	authCheckURL := "http://localhost:8080/api/auth/check"
+
 	mw := MiddlewareConfig{
 		ForwardAuth: &ForwardAuthConfig{
-			Address:            fmt.Sprintf("%s/api/auth/check", homeIndexURL),
+			Address:            authCheckURL,
 			TrustForwardHeader: true,
 			AuthResponseHeaders: []string{
 				"X-User-Id",
 				"X-User-Email",
 				"X-Authorization",
 			},
+			// Authorization: Firebase Bearer token. Cookie: firebase_token fallback.
+			// X-Forwarded-Uri is intentionally omitted - ForwardAuth auto-sets it to the original
+			// request URI; listing it here would copy empty from the browser request and overwrite.
 			AuthRequestHeaders: []string{
 				"Authorization",
 				"Cookie",
@@ -285,8 +304,8 @@ func (c *DynamicConfig) AddForwardAuthMiddleware(name, homeIndexURL string) {
 		},
 	}
 
-	fmt.Printf("[ConfigBuilder] ✅ Created forwardAuth middleware '%s' with address: %s/api/auth/check\n",
-		name, homeIndexURL)
+	fmt.Printf("[ConfigBuilder] ✅ Created forwardAuth middleware '%s' with address: %s\n",
+		name, authCheckURL)
 
 	c.HTTP.Middlewares[name] = mw
 }

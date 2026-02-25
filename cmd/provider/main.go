@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	defaultEnvironment   = "stg"
-	defaultRegion        = "us-central1"
-	defaultOutputFile    = "/etc/traefik/dynamic/routes.yml"
-	defaultPollInterval  = 30 * time.Second
+	defaultEnvironment  = "stg"
+	defaultRegion       = "us-central1"
+	defaultOutputFile   = "/etc/traefik/dynamic/routes.yml"
+	defaultPollInterval = 30 * time.Second
 )
 
 func main() {
@@ -75,11 +75,10 @@ func main() {
 // runOnce generates configuration once and exits
 func runOnce(p *provider.Provider, config *AppConfig) {
 	configChan := make(chan *provider.DynamicConfig, 1)
-	if err := p.Start(configChan); err != nil {
-		log.Fatalf("Failed to start provider: %v", err)
+	if err := p.RunOnce(configChan); err != nil {
+		log.Fatalf("Failed to generate config: %v", err)
 	}
 
-	// Wait for first configuration
 	select {
 	case dynamicConfig := <-configChan:
 		if err := writeRoutes(config.OutputFile, dynamicConfig); err != nil {
@@ -90,13 +89,10 @@ func runOnce(p *provider.Provider, config *AppConfig) {
 	case <-time.After(60 * time.Second):
 		log.Fatalf("Timeout waiting for configuration")
 	}
-
-	if err := p.Stop(); err != nil {
-		log.Printf("Warning: Failed to stop provider: %v", err)
-	}
 }
 
-// runDaemon runs continuously, regenerating routes on interval
+// runDaemon runs continuously, regenerating routes on interval.
+// Uses RunOnce per tick so no background polling goroutines accumulate.
 func runDaemon(p *provider.Provider, config *AppConfig) {
 	fmt.Fprintf(os.Stderr, "🔄 Running in daemon mode (poll every %s)\n", config.PollInterval)
 
@@ -104,12 +100,11 @@ func runDaemon(p *provider.Provider, config *AppConfig) {
 	sigChan := make(chan os.Signal, 1)
 	signal.Notify(sigChan, syscall.SIGINT, syscall.SIGTERM)
 
-	configChan := make(chan *provider.DynamicConfig, 1)
 	ticker := time.NewTicker(config.PollInterval)
 	defer ticker.Stop()
 
 	// Generate initial configuration
-	generateAndWrite(p, config, configChan)
+	generateAndWrite(p, config)
 
 	generation := 1
 	for {
@@ -117,21 +112,21 @@ func runDaemon(p *provider.Provider, config *AppConfig) {
 		case <-ticker.C:
 			generation++
 			fmt.Fprintf(os.Stderr, "\n🔄 [Gen %d] Regenerating routes at %s\n", generation, time.Now().Format(time.RFC3339))
-			generateAndWrite(p, config, configChan)
+			generateAndWrite(p, config)
 
 		case sig := <-sigChan:
 			fmt.Fprintf(os.Stderr, "\n⏹️  Received %s, shutting down...\n", sig)
-			if err := p.Stop(); err != nil {
-				log.Printf("Warning: Failed to stop provider: %v", err)
-			}
 			return
 		}
 	}
 }
 
-func generateAndWrite(p *provider.Provider, config *AppConfig, configChan chan *provider.DynamicConfig) {
-	if err := p.Start(configChan); err != nil {
-		log.Printf("Error starting provider: %v", err)
+// generateAndWrite runs one discovery cycle and writes routes.yml.
+// Creates a fresh channel each call — avoids goroutine accumulation from Start().
+func generateAndWrite(p *provider.Provider, config *AppConfig) {
+	configChan := make(chan *provider.DynamicConfig, 1)
+	if err := p.RunOnce(configChan); err != nil {
+		log.Printf("Error generating config: %v", err)
 		return
 	}
 
@@ -145,8 +140,6 @@ func generateAndWrite(p *provider.Provider, config *AppConfig, configChan chan *
 	case <-time.After(60 * time.Second):
 		log.Printf("Timeout waiting for configuration")
 	}
-
-	// Note: Don't stop provider in daemon mode between polls
 }
 
 func printSummary(outputFile string, dynamicConfig *provider.DynamicConfig) {
@@ -162,7 +155,7 @@ type AppConfig struct {
 	ProjectIDs   []string
 	Region       string
 	OutputFile   string
-	Mode         string        // "once" or "daemon"
+	Mode         string // "once" or "daemon"
 	PollInterval time.Duration
 }
 

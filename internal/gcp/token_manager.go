@@ -16,13 +16,13 @@ import (
 
 // TokenManager manages GCP identity tokens with caching and refresh
 type TokenManager struct {
-	cache                    map[string]*CachedToken
-	mu                       sync.RWMutex
-	devMode                  bool          // Use ADC in local development
-	metadataChecked          bool          // Have we checked if metadata server is available?
-	hasMetadata              bool          // Is metadata server available?
-	impersonateServiceAccount string       // Service account to impersonate for identity tokens
-	tokenCacheDuration       time.Duration // How long to cache tokens (default 55 minutes)
+	cache                     map[string]*CachedToken
+	mu                        sync.RWMutex
+	devMode                   bool          // Use ADC in local development
+	metadataChecked           bool          // Have we checked if metadata server is available?
+	hasMetadata               bool          // Is metadata server available?
+	impersonateServiceAccount string        // Service account to impersonate for identity tokens
+	tokenCacheDuration        time.Duration // How long to cache tokens (default 55 minutes)
 }
 
 // CachedToken represents a cached identity token with expiry
@@ -50,10 +50,10 @@ func NewTokenManager() *TokenManager {
 	}
 
 	return &TokenManager{
-		cache:                    make(map[string]*CachedToken),
-		devMode:                  devMode,
+		cache:                     make(map[string]*CachedToken),
+		devMode:                   devMode,
 		impersonateServiceAccount: impersonateSA,
-		tokenCacheDuration:       cacheDuration,
+		tokenCacheDuration:        cacheDuration,
 	}
 }
 
@@ -146,7 +146,10 @@ func (tm *TokenManager) fetchFromMetadata(audience string) (string, error) {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		body, _ := io.ReadAll(resp.Body)
+		body, err := io.ReadAll(resp.Body)
+		if err != nil {
+			body = []byte("<failed to read body>")
+		}
 		return "", fmt.Errorf("metadata server returned %d: %s", resp.StatusCode, string(body))
 	}
 

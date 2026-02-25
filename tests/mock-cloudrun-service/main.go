@@ -71,17 +71,21 @@ func handleRoot(w http.ResponseWriter, r *http.Request) {
 	if !authInfo.Authenticated {
 		w.WriteHeader(http.StatusUnauthorized)
 	}
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("error encoding response: %v", err)
+	}
 }
 
-func handleHealth(w http.ResponseWriter, r *http.Request) {
+func handleHealth(w http.ResponseWriter, _ *http.Request) {
 	response := Response{
 		Message:   "healthy",
 		Service:   getEnv("SERVICE_NAME", "mock-cloudrun-service"),
 		Timestamp: time.Now().Format(time.RFC3339),
 	}
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("error encoding response: %v", err)
+	}
 }
 
 func handleHeaderDebug(w http.ResponseWriter, r *http.Request) {
@@ -103,7 +107,9 @@ func handleHeaderDebug(w http.ResponseWriter, r *http.Request) {
 	}
 
 	w.Header().Set("Content-Type", "application/json")
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("error encoding response: %v", err)
+	}
 }
 
 func handleAPI(w http.ResponseWriter, r *http.Request) {
@@ -122,7 +128,9 @@ func handleAPI(w http.ResponseWriter, r *http.Request) {
 	if !authInfo.Authenticated {
 		w.WriteHeader(http.StatusUnauthorized)
 	}
-	json.NewEncoder(w).Encode(response)
+	if err := json.NewEncoder(w).Encode(response); err != nil {
+		log.Printf("error encoding response: %v", err)
+	}
 }
 
 // validateAuth checks for X-Serverless-Authorization or Authorization header

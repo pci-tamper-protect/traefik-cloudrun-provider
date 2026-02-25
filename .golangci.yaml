@@ -27,7 +27,7 @@ linters:
     - goconst       # Find repeated strings that could be constants
     - gosec         # Inspect code for security problems
     - prealloc      # Find slice declarations that could be preallocated
-    - exportloopref # Check for pointers to loop variables
+    - copyloopvar   # Check for copies of loop variables (replaces exportloopref since Go 1.22)
     - nolintlint    # Ensure nolint directives are valid
     - revive        # Fast, configurable, extensible, flexible, and beautiful linter
 
@@ -42,7 +42,8 @@ linters-settings:
   govet:
     enable-all: true
     disable:
-      - shadow      # Too strict for most codebases
+      - shadow        # Too strict for most codebases
+      - fieldalignment # Requires reordering struct fields; not worth the churn
 
   gocyclo:
     min-complexity: 15
@@ -102,11 +103,25 @@ issues:
         - staticcheck
       text: "SA9003:"
 
+    # G101: logging code constants contain "TOKEN" in their names/values but are
+    # not credentials — they are structured log codes used for filtering.
+    - linters:
+        - gosec
+      text: "G101:"
+      path: internal/logging/
+
+    # G114: test service servers intentionally use http.ListenAndServe without
+    # custom timeouts; these are not production services.
+    - linters:
+        - gosec
+      text: "G114:"
+      path: tests/
+
   max-issues-per-linter: 0
   max-same-issues: 0
 
 output:
-  format: colored-line-number
+  formats:
+    - format: colored-line-number
   print-issued-lines: true
   print-linter-name: true
-  uniq-by-line: true

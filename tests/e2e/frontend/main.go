@@ -45,10 +45,10 @@ func sanitizeHeaderValue(name, value string) string {
 }
 
 type QueryResponse struct {
-	Request  RequestDetails  `json:"request"`
-	Response ResponseDetails `json:"response"`
-	Service  ServiceInfo     `json:"service"`
-	Timestamp string         `json:"timestamp"`
+	Request   RequestDetails  `json:"request"`
+	Response  ResponseDetails `json:"response"`
+	Service   ServiceInfo     `json:"service"`
+	Timestamp string          `json:"timestamp"`
 }
 
 type RequestDetails struct {
@@ -78,24 +78,25 @@ type ServiceInfo struct {
 type FrontendResponse struct {
 	FrontendHeaders    map[string][]string `json:"frontend_headers"`
 	FrontendAccessLog  []AccessLogEntry    `json:"frontend_access_log"`
-	BackendQueryResult QueryResponse        `json:"backend_query_result"`
-	FrontendInfo       ServiceInfo          `json:"frontend_info"`
-	Timestamp          string               `json:"timestamp"`
+	BackendQueryResult QueryResponse       `json:"backend_query_result"`
+	FrontendInfo       ServiceInfo         `json:"frontend_info"`
+	Timestamp          string              `json:"timestamp"`
 }
 
 type AccessLogEntry struct {
-	Timestamp   string `json:"timestamp"`
-	Method      string `json:"method"`
-	Path        string `json:"path"`
-	RemoteAddr  string `json:"remote_addr"`
-	UserAgent   string `json:"user_agent"`
-	Status      int    `json:"status"`
+	Timestamp    string `json:"timestamp"`
+	Method       string `json:"method"`
+	Path         string `json:"path"`
+	RemoteAddr   string `json:"remote_addr"`
+	UserAgent    string `json:"user_agent"`
+	Status       int    `json:"status"`
 	ResponseTime string `json:"response_time"`
 }
 
 // In-memory access log (in production, use proper logging)
 var accessLog []AccessLogEntry
 
+//nolint:gocyclo
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -106,15 +107,17 @@ func main() {
 	if backendURL == "" {
 		backendURL = "http://traefik:80"
 	}
-	
+
 	backendHost := os.Getenv("BACKEND_HOST")
 	if backendHost == "" {
 		backendHost = "api.localhost"
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
+			log.Printf("error encoding health response: %v", err)
+		}
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
@@ -133,7 +136,7 @@ func main() {
 		// Call backend service via /api/query through Traefik
 		backendQueryURL := backendURL + "/api/query"
 		log.Printf("Frontend: calling backend at %s with Host: %s", backendQueryURL, backendHost)
-		
+
 		req, err := http.NewRequest("GET", backendQueryURL, nil)
 		if err != nil {
 			log.Printf("Frontend: failed to create request: %v", err)
@@ -158,7 +161,7 @@ func main() {
 		client := &http.Client{
 			Timeout: 10 * time.Second,
 		}
-		
+
 		resp, err := client.Do(req)
 		if err != nil {
 			log.Printf("Frontend: failed to call backend: %v", err)
@@ -188,15 +191,15 @@ func main() {
 		// Add to access log
 		accessLogEntry := AccessLogEntry{
 			Timestamp:    time.Now().UTC().Format(time.RFC3339),
-			Method:        r.Method,
-			Path:          r.URL.Path,
-			RemoteAddr:    r.RemoteAddr,
-			UserAgent:     r.Header.Get("User-Agent"),
-			Status:        http.StatusOK,
-			ResponseTime:  responseTime.String(),
+			Method:       r.Method,
+			Path:         r.URL.Path,
+			RemoteAddr:   r.RemoteAddr,
+			UserAgent:    r.Header.Get("User-Agent"),
+			Status:       http.StatusOK,
+			ResponseTime: responseTime.String(),
 		}
 		accessLog = append(accessLog, accessLogEntry)
-		
+
 		// Keep only last 100 entries
 		if len(accessLog) > 100 {
 			accessLog = accessLog[len(accessLog)-100:]
@@ -204,8 +207,8 @@ func main() {
 
 		// Build response
 		response := FrontendResponse{
-			FrontendHeaders:   frontendHeaders,
-			FrontendAccessLog: accessLog,
+			FrontendHeaders:    frontendHeaders,
+			FrontendAccessLog:  accessLog,
 			BackendQueryResult: backendQueryResp,
 			FrontendInfo: ServiceInfo{
 				Name:    "frontend",

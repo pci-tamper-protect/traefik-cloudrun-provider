@@ -66,10 +66,10 @@ type Response struct {
 }
 
 type QueryResponse struct {
-	Request  RequestDetails  `json:"request"`
-	Response ResponseDetails `json:"response"`
-	Service  ServiceInfo    `json:"service"`
-	Timestamp string         `json:"timestamp"`
+	Request   RequestDetails  `json:"request"`
+	Response  ResponseDetails `json:"response"`
+	Service   ServiceInfo     `json:"service"`
+	Timestamp string          `json:"timestamp"`
 }
 
 type RequestDetails struct {
@@ -96,15 +96,18 @@ type ServiceInfo struct {
 	Port    string `json:"port"`
 }
 
+//nolint:gocyclo
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
 		port = "8080"
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
+			log.Printf("error encoding health response: %v", err)
+		}
 	})
 
 	// Debug endpoint to inspect headers
@@ -126,12 +129,14 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(map[string]interface{}{
+		if err := json.NewEncoder(w).Encode(map[string]interface{}{
 			"headers": headers,
 			"path":    r.URL.Path,
 			"method":  r.Method,
 			"remote":  r.RemoteAddr,
-		})
+		}); err != nil {
+			log.Printf("error encoding response: %v", err)
+		}
 	})
 
 	// /api/query endpoint - returns all request and response details
@@ -244,7 +249,9 @@ func main() {
 		}
 
 		w.Header().Set("Content-Type", "application/json")
-		json.NewEncoder(w).Encode(response)
+		if err := json.NewEncoder(w).Encode(response); err != nil {
+			log.Printf("error encoding response: %v", err)
+		}
 	})
 
 	log.Printf("Backend service listening on port %s", port)
