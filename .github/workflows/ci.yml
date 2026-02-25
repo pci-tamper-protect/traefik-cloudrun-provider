@@ -85,7 +85,7 @@ jobs:
           cache: true
 
       - name: Build
-        run: go build -v ./cmd/provider
+        run: go build -v -o /dev/null ./cmd/provider
 
       - name: Build static binary
         run: CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o bin/traefik-cloudrun-provider ./cmd/provider
