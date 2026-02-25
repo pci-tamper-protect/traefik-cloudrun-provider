@@ -38,6 +38,27 @@ type Provider struct {
 
 // New creates a new Cloud Run provider
 func New(config *Config) (*Provider, error) {
+	p, err := newProvider(config)
+	if err != nil {
+		return nil, err
+	}
+
+	// Initialize Cloud Run client — requires GCP credentials.
+	ctx := context.Background()
+	runService, err := run.NewService(ctx)
+	if err != nil {
+		return nil, fmt.Errorf("failed to create Cloud Run service: %w", err)
+	}
+	p.logger.Debug("Cloud Run API client initialized")
+	p.runService = runService
+
+	return p, nil
+}
+
+// newProvider builds a Provider without initialising the Cloud Run API client.
+// Used by New (which adds the real client) and by tests that don't exercise
+// service discovery and therefore don't need GCP credentials.
+func newProvider(config *Config) (*Provider, error) {
 	if config == nil {
 		return nil, fmt.Errorf("config cannot be nil")
 	}
@@ -80,15 +101,6 @@ func New(config *Config) (*Provider, error) {
 		logging.Duration("pollInterval", config.PollInterval),
 	)
 
-	// Initialize Cloud Run client
-	ctx := context.Background()
-	runService, err := run.NewService(ctx)
-	if err != nil {
-		return nil, fmt.Errorf("failed to create Cloud Run service: %w", err)
-	}
-
-	logger.Debug("Cloud Run API client initialized")
-
 	tokenManager := gcp.NewTokenManager()
 	if tokenManager.IsDevMode() {
 		logger.Warn("Running in development mode - will use ADC for tokens if metadata server unavailable")
@@ -96,7 +108,6 @@ func New(config *Config) (*Provider, error) {
 
 	return &Provider{
 		config:       config,
-		runService:   runService,
 		tokenManager: tokenManager,
 		logger:       logger,
 		stopChan:     make(chan struct{}),
