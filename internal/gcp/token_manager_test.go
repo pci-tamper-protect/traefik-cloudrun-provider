@@ -9,7 +9,7 @@ func TestTokenManager_CacheStats(t *testing.T) {
 	tm := NewTokenManager()
 
 	// Initially empty
-	total, expired := tm.CacheStats()
+	total, _ := tm.CacheStats()
 	if total != 0 {
 		t.Errorf("Expected 0 tokens, got %d", total)
 	}
@@ -20,7 +20,7 @@ func TestTokenManager_CacheStats(t *testing.T) {
 		ExpiresAt: time.Now().Add(1 * time.Hour),
 	}
 
-	total, expired = tm.CacheStats()
+	total, expired := tm.CacheStats()
 	if total != 1 {
 		t.Errorf("Expected 1 token, got %d", total)
 	}

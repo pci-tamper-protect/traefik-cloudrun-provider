@@ -96,6 +96,7 @@ type AccessLogEntry struct {
 // In-memory access log (in production, use proper logging)
 var accessLog []AccessLogEntry
 
+//nolint:gocyclo
 func main() {
 	port := os.Getenv("PORT")
 	if port == "" {
@@ -112,9 +113,11 @@ func main() {
 		backendHost = "api.localhost"
 	}
 
-	http.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
+	http.HandleFunc("/health", func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusOK)
-		json.NewEncoder(w).Encode(map[string]string{"status": "healthy"})
+		if err := json.NewEncoder(w).Encode(map[string]string{"status": "healthy"}); err != nil {
+			log.Printf("error encoding health response: %v", err)
+		}
 	})
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {

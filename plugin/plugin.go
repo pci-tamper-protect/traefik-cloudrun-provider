@@ -45,6 +45,8 @@ func CreateConfig() *Config {
 }
 
 // PluginProvider implements the Traefik plugin provider interface
+//
+//nolint:revive // PluginProvider name is required by Traefik's plugin discovery mechanism
 type PluginProvider struct {
 	name         string
 	config       *Config
@@ -319,14 +321,18 @@ func (p *PluginProvider) updateConfig(cfgChan chan<- json.Marshaler) error {
 		)
 
 		// Stop internal provider
-		_ = internalProvider.Stop()
+		if err := internalProvider.Stop(); err != nil {
+			p.logger.Warn("Failed to stop internal provider", logging.Error(err))
+		}
 		p.logger.Debug("Internal provider stopped")
 
 	case <-time.After(60 * time.Second):
 		p.logger.Error("Timeout waiting for configuration from internal provider (60s)",
 			logging.GetCodeField(logging.CodeConfigGenerationError),
 		)
-		_ = internalProvider.Stop()
+		if err := internalProvider.Stop(); err != nil {
+			p.logger.Warn("Failed to stop internal provider", logging.Error(err))
+		}
 		return fmt.Errorf("timeout waiting for configuration")
 	}
 

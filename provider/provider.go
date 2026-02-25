@@ -55,7 +55,7 @@ func New(config *Config) (*Provider, error) {
 	return p, nil
 }
 
-// newProvider builds a Provider without initialising the Cloud Run API client.
+// newProvider builds a Provider without initializing the Cloud Run API client.
 // Used by New (which adds the real client) and by tests that don't exercise
 // service discovery and therefore don't need GCP credentials.
 func newProvider(config *Config) (*Provider, error) {
@@ -168,6 +168,8 @@ func (p *Provider) pollLoop(configChan chan<- *DynamicConfig) {
 }
 
 // updateConfig discovers services and generates Traefik configuration
+//
+//nolint:gocyclo
 func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	startTime := time.Now()
 	p.logger.Info("Starting service discovery...",
@@ -208,7 +210,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 		traefikEnabledCount := 0
 		for _, service := range services {
 			// Check if service has traefik_enable=true label
-			if enabled, ok := service.Labels["traefik_enable"]; ok && enabled == "true" {
+			if enabled, ok := service.Labels["traefik_enable"]; ok && enabled == labelValueTrue {
 				traefikEnabledCount++
 				p.logger.Info("Processing Traefik-enabled service",
 					logging.GetCodeField(logging.CodeServiceProcessingStarted),
@@ -276,7 +278,13 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	if homeIndexURL != "" {
 		if _, hasService := config.HTTP.Services["home-index"]; !hasService {
 			p.logger.Info("Adding home-index service and routers from HOME_INDEX_URL (not discovered from Cloud Run)")
-			serviceToken, _ := p.tokenManager.GetToken(homeIndexURL)
+			serviceToken, err := p.tokenManager.GetToken(homeIndexURL)
+			if err != nil {
+				p.logger.Warn("Failed to get token for HOME_INDEX_URL fallback",
+					logging.String("homeIndexURL", homeIndexURL),
+					logging.Error(err),
+				)
+			}
 			if serviceToken != "" {
 				config.AddAuthMiddleware("home-index-auth", serviceToken)
 			}
@@ -315,7 +323,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 
 	// Generate user auth middlewares if USER_AUTH_ENABLED is true
 	// These forwardAuth middlewares call home-index /api/auth/check for JWT validation
-	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == "true"
+	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == labelValueTrue
 	if userAuthEnabled && homeIndexURL != "" {
 		p.logger.Info("USER_AUTH_ENABLED=true, generating forwardAuth middlewares",
 			logging.String("homeIndexURL", homeIndexURL),
@@ -355,6 +363,8 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 }
 
 // processService processes a single Cloud Run service and adds it to the configuration
+//
+//nolint:gocyclo
 func (p *Provider) processService(service CloudRunService, config *DynamicConfig) error {
 	p.logger.Info("Processing service",
 		logging.GetCodeField(logging.CodeServiceProcessingStarted),
@@ -469,7 +479,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	// - When false (default): Skip auth-check middlewares (no user auth required)
 	// - When true: Include auth-check middlewares (user must be authenticated)
 	// Note: SKIP_AUTH_CHECK is deprecated, use USER_AUTH_ENABLED=false instead
-	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == "true"
+	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == labelValueTrue
 	skipAuthCheck := os.Getenv("SKIP_AUTH_CHECK") == "true" || !userAuthEnabled
 
 	for routerName, routerConfig := range routerConfigs {
@@ -595,7 +605,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 // This function automatically injects strip-prefix middlewares for lab routes
 // because lab services expect requests at / (root), not /labN.
 // The middlewares must be pre-defined in the static routes.yml file.
-func getStripPrefixMiddleware(routerName, rule string) string {
+func getStripPrefixMiddleware(routerName, _ string) string {
 	// Map of router name patterns to their strip-prefix middleware
 	// These middlewares are defined in e-skimming-labs/deploy/traefik/dynamic/routes.yml
 	stripPrefixMap := map[string]string{

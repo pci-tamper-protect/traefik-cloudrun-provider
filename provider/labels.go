@@ -93,7 +93,9 @@ func getDefaultPriority(routerName string) int {
 
 // extractRouterConfigs extracts router configurations from Cloud Run service labels
 // Extracted from cmd/generate-routes/main.go:410-507
-func extractRouterConfigs(labels map[string]string, serviceName string) map[string]RouterConfig {
+//
+//nolint:gocyclo
+func extractRouterConfigs(labels map[string]string, _ string) map[string]RouterConfig {
 	routers := make(map[string]RouterConfig)
 
 	// Find all router labels
@@ -141,7 +143,9 @@ func extractRouterConfigs(labels map[string]string, serviceName string) map[stri
 		case "service":
 			router.Service = value
 		case "priority":
-			fmt.Sscanf(value, "%d", &router.Priority)
+			if _, err := fmt.Sscanf(value, "%d", &router.Priority); err != nil {
+				router.Priority = 0
+			}
 		case "entrypoints":
 			router.EntryPoints = strings.Split(value, ",")
 			for i := range router.EntryPoints {
@@ -190,17 +194,4 @@ func extractRouterConfigs(labels map[string]string, serviceName string) map[stri
 	}
 
 	return routers
-}
-
-// extractServicePort extracts the port from service labels
-func extractServicePort(labels map[string]string, serviceName string) int {
-	port := 8080 // Default port
-
-	if portStr, ok := labels[fmt.Sprintf("traefik_http_services_%s_lb_port", serviceName)]; ok {
-		fmt.Sscanf(portStr, "%d", &port)
-	} else if portStr, ok := labels[fmt.Sprintf("traefik_http_services_%s_loadbalancer_server_port", serviceName)]; ok {
-		fmt.Sscanf(portStr, "%d", &port)
-	}
-
-	return port
 }

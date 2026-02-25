@@ -49,8 +49,12 @@ type CloudRunService struct {
 	Labels    map[string]string
 }
 
+const labelValueTrue = "true"
+
 // listServices lists Cloud Run services with traefik_enable=true label
 // Extracted from cmd/generate-routes/main.go:237-275
+//
+//nolint:gocyclo
 func (p *Provider) listServices(runService *run.APIService, projectID, region string) ([]CloudRunService, error) {
 	parent := fmt.Sprintf("projects/%s/locations/%s", projectID, region)
 
@@ -77,7 +81,7 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 
 				// First check service-level labels (metadata.labels) - set by gcloud run deploy --labels
 				if svc.Metadata != nil && svc.Metadata.Labels != nil {
-					if enabled, ok := svc.Metadata.Labels["traefik_enable"]; ok && enabled == "true" {
+					if enabled, ok := svc.Metadata.Labels["traefik_enable"]; ok && enabled == labelValueTrue {
 						hasTraefikEnable = true
 						labels = svc.Metadata.Labels
 					}
@@ -86,7 +90,7 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 				// Fall back to template metadata labels if not found in service-level labels
 				if !hasTraefikEnable && svc.Spec != nil && svc.Spec.Template != nil && svc.Spec.Template.Metadata != nil {
 					if svc.Spec.Template.Metadata.Labels != nil {
-						if enabled, ok := svc.Spec.Template.Metadata.Labels["traefik_enable"]; ok && enabled == "true" {
+						if enabled, ok := svc.Spec.Template.Metadata.Labels["traefik_enable"]; ok && enabled == labelValueTrue {
 							hasTraefikEnable = true
 							labels = svc.Spec.Template.Metadata.Labels
 						}
@@ -113,14 +117,4 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 	}
 
 	return services, nil
-}
-
-// getServiceDetails gets detailed information about a single Cloud Run service
-func (p *Provider) getServiceDetails(runService *run.APIService, projectID, region, serviceName string) (*run.Service, error) {
-	parent := fmt.Sprintf("projects/%s/locations/%s/services/%s", projectID, region, serviceName)
-	service, err := runService.Projects.Locations.Services.Get(parent).Do()
-	if err != nil {
-		return nil, fmt.Errorf("failed to get service %s: %w", serviceName, err)
-	}
-	return service, nil
 }

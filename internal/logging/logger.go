@@ -129,7 +129,7 @@ func (l *Logger) log(level Level, msg string, fields ...Field) {
 
 // logText writes a text-formatted log entry
 func (l *Logger) logText(timestamp, level, msg string, fields []Field) {
-	var parts []string
+	parts := make([]string, 0, 3+len(fields))
 
 	// Build: timestamp [LEVEL] prefix: message key=value key=value
 	parts = append(parts, timestamp)
@@ -152,7 +152,7 @@ func (l *Logger) logText(timestamp, level, msg string, fields []Field) {
 // logJSON writes a JSON-formatted log entry
 func (l *Logger) logJSON(timestamp, level, msg string, fields []Field) {
 	// Simple JSON without external dependencies
-	var parts []string
+	parts := make([]string, 0, 3+len(fields))
 
 	parts = append(parts, fmt.Sprintf(`"timestamp":"%s"`, timestamp))
 	parts = append(parts, fmt.Sprintf(`"level":"%s"`, level))
