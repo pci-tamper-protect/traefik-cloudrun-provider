@@ -15,10 +15,10 @@ import (
 )
 
 const (
-	defaultEnvironment   = "stg"
-	defaultRegion        = "us-central1"
-	defaultOutputFile    = "/etc/traefik/dynamic/routes.yml"
-	defaultPollInterval  = 30 * time.Second
+	defaultEnvironment  = "stg"
+	defaultRegion       = "us-central1"
+	defaultOutputFile   = "/etc/traefik/dynamic/routes.yml"
+	defaultPollInterval = 30 * time.Second
 )
 
 func main() {
@@ -155,7 +155,7 @@ type AppConfig struct {
 	ProjectIDs   []string
 	Region       string
 	OutputFile   string
-	Mode         string        // "once" or "daemon"
+	Mode         string // "once" or "daemon"
 	PollInterval time.Duration
 }
 

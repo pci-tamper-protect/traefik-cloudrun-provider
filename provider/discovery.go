@@ -74,7 +74,7 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 				// Check both service-level labels (set by --labels) and template metadata labels
 				var labels map[string]string
 				var hasTraefikEnable bool
-				
+
 				// First check service-level labels (metadata.labels) - set by gcloud run deploy --labels
 				if svc.Metadata != nil && svc.Metadata.Labels != nil {
 					if enabled, ok := svc.Metadata.Labels["traefik_enable"]; ok && enabled == "true" {
@@ -82,7 +82,7 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 						labels = svc.Metadata.Labels
 					}
 				}
-				
+
 				// Fall back to template metadata labels if not found in service-level labels
 				if !hasTraefikEnable && svc.Spec != nil && svc.Spec.Template != nil && svc.Spec.Template.Metadata != nil {
 					if svc.Spec.Template.Metadata.Labels != nil {
@@ -92,7 +92,7 @@ func (p *Provider) listServices(runService *run.APIService, projectID, region st
 						}
 					}
 				}
-				
+
 				if hasTraefikEnable && labels != nil {
 					services = append(services, CloudRunService{
 						Name:      svc.Metadata.Name,

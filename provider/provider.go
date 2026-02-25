@@ -165,7 +165,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 	config := NewDynamicConfig()
 
 	totalServices := 0
-	
+
 	// Track home-index URL for user auth middleware generation
 	var homeIndexURL string
 
@@ -217,7 +217,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 					logging.GetCodeField(logging.CodeServiceProcessingSuccess),
 					logging.String("service", service.Name),
 				)
-				
+
 				// Track home-index URL for user auth middleware
 				if strings.Contains(service.Name, "home-index") && service.URL != "" {
 					homeIndexURL = service.URL
@@ -232,7 +232,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 				)
 			}
 		}
-		
+
 		if traefikEnabledCount == 0 {
 			p.logger.Warn("No Traefik-enabled services found in project",
 				logging.GetCodeField(logging.CodeServiceDiscoveryNoServices),
@@ -376,7 +376,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 			break
 		}
 	}
-	
+
 	// Set service name on routers that don't have it explicitly set
 	// This ensures all routers point to the correct service
 	// Note: Cannot directly assign to struct field in map - must get, modify, and put back
@@ -394,7 +394,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 		logging.String("service", service.Name),
 		logging.String("url", service.URL),
 	)
-	
+
 	serviceToken, err := p.tokenManager.GetToken(service.URL)
 	if err != nil {
 		p.logger.Error("Failed to fetch identity token for service",
@@ -460,7 +460,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 	// Note: SKIP_AUTH_CHECK is deprecated, use USER_AUTH_ENABLED=false instead
 	userAuthEnabled := os.Getenv("USER_AUTH_ENABLED") == "true"
 	skipAuthCheck := os.Getenv("SKIP_AUTH_CHECK") == "true" || !userAuthEnabled
-	
+
 	for routerName, routerConfig := range routerConfigs {
 		// Filter out auth-check middlewares if user auth is disabled
 		// These middlewares use forwardAuth which requires home-index service
@@ -498,7 +498,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 					logging.String("middleware", stripPrefixMiddleware))
 			}
 		}
-		
+
 		// Add service auth middleware if it was created and not already present
 		// Note: Middleware order doesn't matter for header conflicts since we use
 		// X-Serverless-Authorization (doesn't conflict with user's Authorization header)
@@ -535,7 +535,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 		if middlewareList == "" {
 			middlewareList = "none"
 		}
-		
+
 		// Check if service auth middleware is present for better debugging
 		hasAuthMw := false
 		for _, mw := range routerConfig.Middlewares {
@@ -544,7 +544,7 @@ func (p *Provider) processService(service CloudRunService, config *DynamicConfig
 				break
 			}
 		}
-		
+
 		p.logger.Info("Router configured",
 			logging.GetCodeField(logging.CodeRouterConfigured),
 			logging.String("router", routerName),
@@ -598,9 +598,9 @@ func getStripPrefixMiddleware(routerName, rule string) string {
 		"lab2-static": "strip-lab2-prefix@file",
 		"lab2-c2":     "strip-lab2-c2-prefix@file",
 		// Lab 3 routes
-		"lab3":        "strip-lab3-prefix@file",
-		"lab3-main":   "strip-lab3-prefix@file",
-		"lab3-static": "strip-lab3-prefix@file",
+		"lab3":           "strip-lab3-prefix@file",
+		"lab3-main":      "strip-lab3-prefix@file",
+		"lab3-static":    "strip-lab3-prefix@file",
 		"lab3-extension": "strip-lab3-extension-prefix@file",
 		// API routes
 		"home-seo":       "strip-seo-prefix@file",

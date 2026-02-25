@@ -66,10 +66,10 @@ type Response struct {
 }
 
 type QueryResponse struct {
-	Request  RequestDetails  `json:"request"`
-	Response ResponseDetails `json:"response"`
-	Service  ServiceInfo    `json:"service"`
-	Timestamp string         `json:"timestamp"`
+	Request   RequestDetails  `json:"request"`
+	Response  ResponseDetails `json:"response"`
+	Service   ServiceInfo     `json:"service"`
+	Timestamp string          `json:"timestamp"`
 }
 
 type RequestDetails struct {

@@ -40,12 +40,12 @@ type HeaderInspection struct {
 }
 
 type AuthHeaders struct {
-	Authorization              string `json:"authorization,omitempty"`
-	XServerlessAuthorization   string `json:"x_serverless_authorization,omitempty"`
-	XForwardedFor              string `json:"x_forwarded_for,omitempty"`
-	XForwardedHost             string `json:"x_forwarded_host,omitempty"`
-	XForwardedProto            string `json:"x_forwarded_proto,omitempty"`
-	XRealIP                    string `json:"x_real_ip,omitempty"`
+	Authorization            string `json:"authorization,omitempty"`
+	XServerlessAuthorization string `json:"x_serverless_authorization,omitempty"`
+	XForwardedFor            string `json:"x_forwarded_for,omitempty"`
+	XForwardedHost           string `json:"x_forwarded_host,omitempty"`
+	XForwardedProto          string `json:"x_forwarded_proto,omitempty"`
+	XRealIP                  string `json:"x_real_ip,omitempty"`
 }
 
 func main() {
@@ -143,7 +143,6 @@ func logInspection(inspection HeaderInspection) {
 	}
 	log.Printf("========================================")
 }
-
 
 func getEnv(key, defaultValue string) string {
 	if value := os.Getenv(key); value != "" {

@@ -159,7 +159,7 @@ func TestProcessService_WithValidLabels(t *testing.T) {
 		ProjectID: "test-project",
 		URL:       "https://test-service.run.app",
 		Labels: map[string]string{
-			"traefik_enable":           "true",
+			"traefik_enable":                 "true",
 			"traefik_http_routers_test_rule": "Host(`example.com`)",
 		},
 	}
