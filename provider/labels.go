@@ -38,18 +38,33 @@ var ruleMap = map[string]string{
 	"home-index-signin": "Path(`/sign-in`) || Path(`/sign-up`)",
 	"home-seo":          "PathPrefix(`/api/seo`)",
 	"labs-analytics":    "PathPrefix(`/api/analytics`)",
-	"lab1":              "PathPrefix(`/lab1`)",
-	"lab1-main":         "PathPrefix(`/lab1`)",
-	"lab1-static":       "PathPrefix(`/lab1/css/`) || PathPrefix(`/lab1/js/`) || PathPrefix(`/lab1/images/`) || PathPrefix(`/lab1/img/`) || PathPrefix(`/lab1/static/`) || PathPrefix(`/lab1/assets/`)",
-	"lab1-c2":           "PathPrefix(`/lab1/c2`)",
-	"lab2":              "PathPrefix(`/lab2`)",
-	"lab2-main":         "PathPrefix(`/lab2`)",
-	"lab2-static":       "PathPrefix(`/lab2/css/`) || PathPrefix(`/lab2/js/`) || PathPrefix(`/lab2/images/`) || PathPrefix(`/lab2/img/`) || PathPrefix(`/lab2/static/`) || PathPrefix(`/lab2/assets/`)",
-	"lab2-c2":           "PathPrefix(`/lab2/c2`)",
-	"lab3":              "PathPrefix(`/lab3`)",
-	"lab3-main":         "PathPrefix(`/lab3`)",
-	"lab3-static":       "PathPrefix(`/lab3/css/`) || PathPrefix(`/lab3/js/`) || PathPrefix(`/lab3/images/`) || PathPrefix(`/lab3/img/`) || PathPrefix(`/lab3/static/`) || PathPrefix(`/lab3/assets/`)",
-	"lab3-extension":    "PathPrefix(`/lab3/extension`)",
+	"lab1-health":        "Path(`/lab1/health`)",
+	"lab2-health":        "Path(`/lab2/health`)",
+	"lab3-health":        "Path(`/lab3/health`)",
+	"lab4-health":        "Path(`/lab4/health`)",
+	"lab1":                    "PathPrefix(`/lab1`)",
+	"lab1-main":               "PathPrefix(`/lab1`)",
+	"lab1-static":             "PathPrefix(`/lab1/css/`) || PathPrefix(`/lab1/js/`) || PathPrefix(`/lab1/images/`) || PathPrefix(`/lab1/img/`) || PathPrefix(`/lab1/static/`) || PathPrefix(`/lab1/assets/`)",
+	"lab1-c2":                 "PathPrefix(`/lab1/c2`)",
+	"lab1-c2-collect":         "Path(`/lab1/c2/collect`)",
+	"lab1-event-listener":     "PathPrefix(`/lab1/variants/event-listener`)",
+	"lab1-obfuscated":         "PathPrefix(`/lab1/variants/obfuscated`)",
+	"lab1-websocket":          "PathPrefix(`/lab1/variants/websocket`)",
+	"lab2":                    "PathPrefix(`/lab2`)",
+	"lab2-main":               "PathPrefix(`/lab2`)",
+	"lab2-static":             "PathPrefix(`/lab2/css/`) || PathPrefix(`/lab2/js/`) || PathPrefix(`/lab2/images/`) || PathPrefix(`/lab2/img/`) || PathPrefix(`/lab2/static/`) || PathPrefix(`/lab2/assets/`)",
+	"lab2-c2":                 "PathPrefix(`/lab2/c2`)",
+	"lab2-c2-collect":         "Path(`/lab2/c2/collect`)",
+	"lab2-malicious":          "PathPrefix(`/lab2/malicious-code/`)",
+	"lab3":                    "PathPrefix(`/lab3`)",
+	"lab3-main":               "PathPrefix(`/lab3`)",
+	"lab3-static":             "PathPrefix(`/lab3/css/`) || PathPrefix(`/lab3/js/`) || PathPrefix(`/lab3/images/`) || PathPrefix(`/lab3/img/`) || PathPrefix(`/lab3/static/`) || PathPrefix(`/lab3/assets/`)",
+	"lab3-extension":          "PathPrefix(`/lab3/extension`)",
+	"lab4":                    "PathPrefix(`/lab4`)",
+	"lab4-main":               "PathPrefix(`/lab4`)",
+	"lab4-static":             "PathPrefix(`/lab4/css/`) || PathPrefix(`/lab4/js/`) || PathPrefix(`/lab4/images/`) || PathPrefix(`/lab4/img/`) || PathPrefix(`/lab4/static/`) || PathPrefix(`/lab4/assets/`)",
+	"lab4-c2":                 "PathPrefix(`/lab4/c2`)",
+	"lab4-c2-collect":         "Path(`/lab4/c2/collect`)",
 }
 
 // defaultPriorityMap maps router names to default priorities
@@ -63,22 +78,37 @@ var ruleMap = map[string]string{
 //   - 500: API routes (/api/seo, /api/analytics)
 //   - 1000: internal routes (dashboard, api)
 var defaultPriorityMap = map[string]int{
+	"lab1-health":       400, // Health warmup routes (no auth)
+	"lab2-health":       400,
+	"lab3-health":       400,
+	"lab4-health":       400,
 	"home-index":        1,   // Lowest priority - catch-all for "/"
 	"home-index-root":   1,   // Lowest priority - catch-all for "/"
 	"home-index-signin": 100, // Sign-in pages
 	"home-seo":          500, // API routes
 	"labs-analytics":    500, // API routes
-	"lab1":              200, // Main lab routes
-	"lab1-static":       250, // Static assets (more specific)
-	"lab1-c2":           300, // Sub-routes (most specific)
-	"lab2":              200,
-	"lab2-main":         200,
-	"lab2-static":       250,
-	"lab2-c2":           300,
-	"lab3":              200,
-	"lab3-main":         200,
-	"lab3-static":       250,
-	"lab3-extension":    300,
+	"lab1":                200, // Main lab routes
+	"lab1-static":         250, // Static assets (more specific)
+	"lab1-c2":             300, // Sub-routes (most specific)
+	"lab1-c2-collect":     350, // Collect endpoint (more specific than c2 prefix)
+	"lab1-event-listener": 400,
+	"lab1-obfuscated":     400,
+	"lab1-websocket":      400,
+	"lab2":                200,
+	"lab2-main":           200,
+	"lab2-static":         250,
+	"lab2-malicious":      260,
+	"lab2-c2":             300,
+	"lab2-c2-collect":     350,
+	"lab3":                200,
+	"lab3-main":           200,
+	"lab3-static":         250,
+	"lab3-extension":      300,
+	"lab4":                200,
+	"lab4-main":           200,
+	"lab4-static":         250,
+	"lab4-c2":             300,
+	"lab4-c2-collect":     350,
 }
 
 // getDefaultPriority returns the default priority for a router name
@@ -139,6 +169,9 @@ func extractRouterConfigs(labels map[string]string, _ string) map[string]RouterC
 		case "rule_id":
 			if mappedRule, ok := ruleMap[value]; ok {
 				router.Rule = mappedRule
+			} else {
+				fmt.Fprintf(os.Stderr, "   WARNING: Unknown rule_id %q for router %s, using literal value as rule\n", value, routerName)
+				router.Rule = value
 			}
 		case "service":
 			router.Service = value

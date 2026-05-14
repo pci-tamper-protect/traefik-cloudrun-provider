@@ -332,6 +332,7 @@ func (p *Provider) updateConfig(configChan chan<- *DynamicConfig) error {
 		config.AddForwardAuthMiddleware("lab1-auth-check", homeIndexURL)
 		config.AddForwardAuthMiddleware("lab2-auth-check", homeIndexURL)
 		config.AddForwardAuthMiddleware("lab3-auth-check", homeIndexURL)
+		config.AddForwardAuthMiddleware("lab4-auth-check", homeIndexURL)
 	} else if userAuthEnabled && homeIndexURL == "" {
 		p.logger.Warn("USER_AUTH_ENABLED=true but home-index URL not found - user auth middlewares not generated")
 	} else {
@@ -623,6 +624,11 @@ func getStripPrefixMiddleware(routerName, _ string) string {
 		"lab3-main":      "strip-lab3-prefix@file",
 		"lab3-static":    "strip-lab3-prefix@file",
 		"lab3-extension": "strip-lab3-extension-prefix@file",
+		// Lab 4 routes
+		"lab4":        "strip-lab4-prefix@file",
+		"lab4-main":   "strip-lab4-prefix@file",
+		"lab4-static": "strip-lab4-prefix@file",
+		"lab4-c2":     "strip-lab4-c2-prefix@file",
 		// API routes
 		"home-seo":       "strip-seo-prefix@file",
 		"labs-analytics": "strip-analytics-prefix@file",
