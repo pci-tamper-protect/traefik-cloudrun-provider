@@ -34,6 +34,7 @@ type ServerConfig struct {
 // ruleMap maps rule IDs to Traefik rule expressions
 // Extracted from cmd/generate-routes/main.go:23-37
 var ruleMap = map[string]string{
+	"home-index":        "PathPrefix(`/`)",
 	"home-index-root":   "PathPrefix(`/`)",
 	"home-index-signin": "Path(`/sign-in`) || Path(`/sign-up`)",
 	"home-seo":          "PathPrefix(`/api/seo`)",
